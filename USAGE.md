@@ -117,6 +117,40 @@ tickets search "login bug"
 tickets close TICKET-1
 ```
 
+### Project Status
+
+```bash
+# Show project status summary
+tickets status
+
+# Show detailed status with ticket listings
+tickets status --format detailed
+
+# Get JSON output for integration
+tickets status --format json
+
+# Update README.md with current status
+tickets status --update-readme
+
+# Generate detailed STATUS.md report
+tickets status --generate-report
+
+# Both update README and generate report
+tickets status --update-readme --generate-report
+
+# Check status for different time periods
+tickets status --days 30  # Last 30 days of activity
+tickets status --days 1   # Just today's changes
+```
+
+The status command provides:
+- **Overview**: Total tickets, open, in-progress, closed counts
+- **Priority Breakdown**: Critical and high priority items
+- **Recent Progress**: Recently closed tickets in specified time period
+- **AI Agent Status**: Agent availability and active tasks
+- **README Integration**: Auto-updates README.md with status section
+- **Detailed Reports**: Generates STATUS.md with comprehensive breakdown
+
 ### Statistics
 
 ```bash

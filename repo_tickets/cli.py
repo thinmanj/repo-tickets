@@ -7,8 +7,11 @@ Provides command-line interface for managing tickets in repositories.
 
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
+from pathlib import Path
+import re
+import json
 
 import click
 import colorama
@@ -778,6 +781,287 @@ def time(ticket_id, start, stop, add, entry_type, description):
     except Exception as e:
         click.echo(f"{Fore.RED}Error with time tracking: {e}{Style.RESET_ALL}", err=True)
         sys.exit(1)
+
+
+@main.command()
+@click.option('--update-readme', is_flag=True, help='Update README.md with ticket status summary')
+@click.option('--generate-report', is_flag=True, help='Generate STATUS.md report file')
+@click.option('--days', default=7, type=int, help='Number of days for recent activity (default: 7)')
+@click.option('--format', 'output_format', default='summary', 
+              type=click.Choice(['summary', 'detailed', 'json']), help='Output format')
+def status(update_readme, generate_report, days, output_format):
+    """Show project status and optionally update README or generate reports."""
+    try:
+        storage = get_storage()
+        if not storage.is_initialized():
+            click.echo(f"{Fore.RED}❌ Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+            sys.exit(1)
+        
+        # Get all tickets
+        tickets = storage.list_tickets()
+        
+        if not tickets:
+            click.echo(f"{Fore.YELLOW}No tickets found.{Style.RESET_ALL}")
+            return
+        
+        # Calculate statistics
+        total_tickets = len(tickets)
+        open_tickets = [t for t in tickets if t.status == 'open']
+        in_progress_tickets = [t for t in tickets if t.status == 'in-progress']
+        closed_tickets = [t for t in tickets if t.status == 'closed']
+        
+        # Recent activity (tickets closed in last N days)
+        cutoff_date = datetime.now() - timedelta(days=days)
+        recent_closed = [t for t in closed_tickets if t.updated_at >= cutoff_date]
+        
+        # Priority breakdown
+        critical_tickets = [t for t in tickets if t.priority == 'critical' and t.status != 'closed']
+        high_priority = [t for t in tickets if t.priority == 'high' and t.status != 'closed']
+        
+        # Agent statistics (if available)
+        agent_stats = {}
+        try:
+            from .agents import AgentStorage
+            agent_storage = AgentStorage()
+            if agent_storage.is_initialized():
+                agents = agent_storage.list_agents()
+                agent_tasks = agent_storage.list_tasks()
+                agent_stats = {
+                    'total_agents': len(agents),
+                    'active_agents': len([a for a in agents if a.status == 'active']),
+                    'total_tasks': len(agent_tasks),
+                    'active_tasks': len([t for t in agent_tasks if t.status in ['assigned', 'in_progress']])
+                }
+        except ImportError:
+            pass
+        
+        # Generate summary
+        summary_data = {
+            'total_tickets': total_tickets,
+            'open_tickets': len(open_tickets),
+            'in_progress': len(in_progress_tickets),
+            'closed_tickets': len(closed_tickets),
+            'critical_open': len(critical_tickets),
+            'high_priority_open': len(high_priority),
+            'recent_closed': len(recent_closed),
+            'recent_closed_list': [{'id': t.id, 'title': t.title, 'closed_at': t.updated_at.strftime('%Y-%m-%d')} for t in recent_closed],
+            'agent_stats': agent_stats
+        }
+        
+        # Output based on format
+        if output_format == 'json':
+            click.echo(json.dumps(summary_data, indent=2, default=str))
+        elif output_format == 'detailed':
+            _print_detailed_status(summary_data, tickets, days)
+        else:
+            _print_status_summary(summary_data, days)
+        
+        # Update README if requested
+        if update_readme:
+            _update_readme_status(summary_data)
+        
+        # Generate report file if requested
+        if generate_report:
+            _generate_status_report(summary_data, tickets, days)
+            
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error generating status: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+def _print_status_summary(data, days):
+    """Print a concise status summary."""
+    click.echo(f"{Fore.CYAN}📊 Project Status Summary{Style.RESET_ALL}")
+    click.echo(f"\n🎫 Tickets Overview:")
+    click.echo(f"  Total: {data['total_tickets']}")
+    click.echo(f"  📂 Open: {data['open_tickets']}")
+    click.echo(f"  ⚡ In Progress: {data['in_progress']}")
+    click.echo(f"  ✅ Closed: {data['closed_tickets']}")
+    
+    if data['critical_open'] > 0 or data['high_priority_open'] > 0:
+        click.echo(f"\n🚨 Priority Items:")
+        if data['critical_open'] > 0:
+            click.echo(f"  🔴 Critical: {data['critical_open']}")
+        if data['high_priority_open'] > 0:
+            click.echo(f"  🟡 High: {data['high_priority_open']}")
+    
+    if data['recent_closed'] > 0:
+        click.echo(f"\n🎉 Recent Progress ({days} days):")
+        click.echo(f"  ✅ Closed: {data['recent_closed']} tickets")
+        for ticket in data['recent_closed_list'][:5]:  # Show up to 5 recent
+            click.echo(f"    • {ticket['id']}: {ticket['title'][:50]}{'...' if len(ticket['title']) > 50 else ''} ({ticket['closed_at']})")
+        if len(data['recent_closed_list']) > 5:
+            click.echo(f"    ... and {len(data['recent_closed_list']) - 5} more")
+    
+    if data['agent_stats']:
+        click.echo(f"\n🤖 AI Agents:")
+        click.echo(f"  Total: {data['agent_stats']['total_agents']}")
+        click.echo(f"  Active: {data['agent_stats']['active_agents']}")
+        click.echo(f"  Tasks: {data['agent_stats']['active_tasks']}/{data['agent_stats']['total_tasks']} active")
+
+
+def _print_detailed_status(data, all_tickets, days):
+    """Print detailed status information."""
+    _print_status_summary(data, days)
+    
+    # Add detailed breakdowns
+    open_tickets = [t for t in all_tickets if t.status == 'open']
+    in_progress_tickets = [t for t in all_tickets if t.status == 'in-progress']
+    
+    if open_tickets:
+        click.echo(f"\n{Fore.BLUE}📂 Open Tickets:{Style.RESET_ALL}")
+        for ticket in open_tickets[:10]:  # Show up to 10
+            priority_icon = {'critical': '🔴', 'high': '🟡', 'medium': '🟢', 'low': '⚪'}.get(ticket.priority, '⚪')
+            click.echo(f"  {priority_icon} {ticket.id}: {ticket.title}")
+        if len(open_tickets) > 10:
+            click.echo(f"    ... and {len(open_tickets) - 10} more")
+    
+    if in_progress_tickets:
+        click.echo(f"\n{Fore.YELLOW}⚡ In Progress:{Style.RESET_ALL}")
+        for ticket in in_progress_tickets:
+            assignee = f" ({ticket.assignee})" if ticket.assignee else ""
+            click.echo(f"  ▶ {ticket.id}: {ticket.title}{assignee}")
+
+
+def _update_readme_status(data):
+    """Update README.md with status summary."""
+    try:
+        readme_path = Path.cwd() / "README.md"
+        if not readme_path.exists():
+            click.echo(f"{Fore.YELLOW}README.md not found, creating new one.{Style.RESET_ALL}")
+            readme_content = "# Project\n\n"
+        else:
+            with open(readme_path, 'r', encoding='utf-8') as f:
+                readme_content = f.read()
+        
+        # Generate status section
+        status_section = f"""## 📊 Project Status
+
+<!-- AUTO-GENERATED STATUS - DO NOT EDIT MANUALLY -->
+**Last Updated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+**Ticket Overview:**
+- 🎫 Total: {data['total_tickets']}
+- 📂 Open: {data['open_tickets']}
+- ⚡ In Progress: {data['in_progress']}
+- ✅ Closed: {data['closed_tickets']}
+"""
+        
+        if data['critical_open'] > 0 or data['high_priority_open'] > 0:
+            status_section += f"\n**Priority Items:**\n"
+            if data['critical_open'] > 0:
+                status_section += f"- 🔴 Critical: {data['critical_open']}\n"
+            if data['high_priority_open'] > 0:
+                status_section += f"- 🟡 High Priority: {data['high_priority_open']}\n"
+        
+        if data['recent_closed'] > 0:
+            status_section += f"\n**Recent Progress:**\n"
+            for ticket in data['recent_closed_list'][:3]:  # Show top 3 in README
+                status_section += f"- ✅ {ticket['id']}: {ticket['title']} ({ticket['closed_at']})\n"
+        
+        if data['agent_stats']:
+            status_section += f"\n**🤖 AI Agents:** {data['agent_stats']['active_agents']}/{data['agent_stats']['total_agents']} active, {data['agent_stats']['active_tasks']} active tasks\n"
+        
+        status_section += "\n<!-- END AUTO-GENERATED STATUS -->\n"
+        
+        # Update or insert status section
+        status_pattern = r'## 📊 Project Status.*?<!-- END AUTO-GENERATED STATUS -->\n'
+        if re.search(status_pattern, readme_content, re.DOTALL):
+            # Update existing section
+            readme_content = re.sub(status_pattern, status_section, readme_content, flags=re.DOTALL)
+        else:
+            # Insert after first heading or at beginning
+            lines = readme_content.split('\n')
+            insert_index = 1 if lines and lines[0].startswith('#') else 0
+            lines.insert(insert_index, status_section)
+            readme_content = '\n'.join(lines)
+        
+        with open(readme_path, 'w', encoding='utf-8') as f:
+            f.write(readme_content)
+        
+        click.echo(f"{Fore.GREEN}✅ Updated README.md with status summary{Style.RESET_ALL}")
+        
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error updating README: {e}{Style.RESET_ALL}", err=True)
+
+
+def _generate_status_report(data, all_tickets, days):
+    """Generate detailed STATUS.md report."""
+    try:
+        status_path = Path.cwd() / "STATUS.md"
+        
+        # Generate comprehensive report
+        report = f"""# Project Status Report
+
+**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+**Report Period:** Last {days} days
+
+## 📊 Overview
+
+| Metric | Count |
+|--------|-------|
+| Total Tickets | {data['total_tickets']} |
+| Open | {data['open_tickets']} |
+| In Progress | {data['in_progress']} |
+| Closed | {data['closed_tickets']} |
+| Critical (Open) | {data['critical_open']} |
+| High Priority (Open) | {data['high_priority_open']} |
+| Recently Closed | {data['recent_closed']} |
+"""
+        
+        if data['agent_stats']:
+            report += f"""\n## 🤖 AI Agent Status
+
+| Metric | Count |
+|--------|-------|
+| Total Agents | {data['agent_stats']['total_agents']} |
+| Active Agents | {data['agent_stats']['active_agents']} |
+| Total Tasks | {data['agent_stats']['total_tasks']} |
+| Active Tasks | {data['agent_stats']['active_tasks']} |
+"""
+        
+        # Recent closed tickets section
+        if data['recent_closed'] > 0:
+            report += f"\n## 🎉 Recently Resolved ({days} days)\n\n"
+            for ticket in data['recent_closed_list']:
+                report += f"- **{ticket['id']}**: {ticket['title']} *(closed {ticket['closed_at']})*\n"
+        
+        # Open tickets by priority
+        open_tickets = [t for t in all_tickets if t.status == 'open']
+        if open_tickets:
+            critical = [t for t in open_tickets if t.priority == 'critical']
+            high = [t for t in open_tickets if t.priority == 'high']
+            medium = [t for t in open_tickets if t.priority == 'medium']
+            low = [t for t in open_tickets if t.priority == 'low']
+            
+            report += f"\n## 📂 Open Tickets by Priority\n\n"
+            
+            for priority, tickets, icon in [('Critical', critical, '🔴'), ('High', high, '🟡'), 
+                                           ('Medium', medium, '🟢'), ('Low', low, '⚪')]:
+                if tickets:
+                    report += f"### {icon} {priority} Priority\n\n"
+                    for ticket in tickets:
+                        assignee = f" *@{ticket.assignee}*" if ticket.assignee else ""
+                        labels = f" `{', '.join(ticket.labels)}`" if ticket.labels else ""
+                        report += f"- **{ticket.id}**: {ticket.title}{assignee}{labels}\n"
+                    report += "\n"
+        
+        # In progress tickets
+        in_progress = [t for t in all_tickets if t.status == 'in-progress']
+        if in_progress:
+            report += f"## ⚡ In Progress\n\n"
+            for ticket in in_progress:
+                assignee = f" *@{ticket.assignee}*" if ticket.assignee else ""
+                report += f"- **{ticket.id}**: {ticket.title}{assignee}\n"
+        
+        # Write report
+        with open(status_path, 'w', encoding='utf-8') as f:
+            f.write(report)
+        
+        click.echo(f"{Fore.GREEN}✅ Generated STATUS.md report{Style.RESET_ALL}")
+        
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error generating status report: {e}{Style.RESET_ALL}", err=True)
 
 
 @main.command()

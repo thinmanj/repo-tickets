@@ -1,4 +1,25 @@
 # Repo Tickets
+## 📊 Project Status
+
+<!-- AUTO-GENERATED STATUS - DO NOT EDIT MANUALLY -->
+**Last Updated:** 2025-10-02 13:04:34
+
+**Ticket Overview:**
+- 🎫 Total: 4
+- 📂 Open: 2
+- ⚡ In Progress: 1
+- ✅ Closed: 1
+
+**Priority Items:**
+- 🟡 High Priority: 1
+
+**Recent Progress:**
+- ✅ IMPLEMEN-1: Implement user authentication (2025-10-02)
+
+**🤖 AI Agents:** 2/2 active, 2 active tasks
+
+<!-- END AUTO-GENERATED STATUS -->
+
 
 A CLI ticket system that works with git, mercurial, and Jujutsu repositories without external services.
 
@@ -48,6 +69,11 @@ tickets search "login"
 
 # Close a ticket
 tickets close TICKET-1
+
+# Check project status
+tickets status
+tickets status --format detailed
+tickets status --update-readme --generate-report
 
 # Generate professional HTML report
 tickets report
@@ -107,6 +133,7 @@ Repo-tickets stores tickets as YAML files in a `.tickets/` directory in your rep
 
 ### Analytics & Reporting
 - `tickets report` - Generate HTML report with analytics
+- `tickets status` - Show project status summary with recent progress
 - `tickets journal ID CONTENT` - Add PM journal entry with metrics
 - `tickets time ID` - Track time spent on tickets
 
