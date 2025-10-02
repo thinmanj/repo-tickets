@@ -27,16 +27,24 @@ class AgentStorage:
         self.agents_dir = self.ticket_storage.tickets_dir / "agents"
         self.tasks_dir = self.ticket_storage.tickets_dir / "tasks"
         
-        # Ensure directories exist
-        self.agents_dir.mkdir(exist_ok=True)
-        self.tasks_dir.mkdir(exist_ok=True)
+        # Ensure directories exist if ticket storage is initialized
+        if self.ticket_storage.is_initialized():
+            self.agents_dir.mkdir(exist_ok=True)
+            self.tasks_dir.mkdir(exist_ok=True)
     
     def is_initialized(self) -> bool:
         """Check if the agent system is initialized."""
         return self.ticket_storage.is_initialized() and self.agents_dir.exists()
     
+    def _ensure_directories(self) -> None:
+        """Ensure agent directories exist."""
+        if self.ticket_storage.is_initialized():
+            self.agents_dir.mkdir(exist_ok=True)
+            self.tasks_dir.mkdir(exist_ok=True)
+    
     def save_agent(self, agent: Agent) -> None:
         """Save an agent to storage."""
+        self._ensure_directories()
         agent_file = self.agents_dir / f"{agent.id}.json"
         
         try:
@@ -97,6 +105,7 @@ class AgentStorage:
     
     def save_task(self, task: AgentTask) -> None:
         """Save an agent task to storage."""
+        self._ensure_directories()
         task_file = self.tasks_dir / f"{task.id}.json"
         
         try:
