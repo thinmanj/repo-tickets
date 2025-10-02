@@ -280,6 +280,161 @@ The `.tickets/` directory should be committed to your repository to share ticket
 .tickets/*~
 ```
 
+## AI Agent System 🤖
+
+Repo-tickets includes a comprehensive AI agent system for automated task management. Create AI agents to handle different types of work and automatically assign tasks based on agent capabilities and availability.
+
+### Creating AI Agents
+
+```bash
+# Create a developer agent
+tickets agent create "CodeBot" \
+  --description "AI developer specialized in Python and JavaScript" \
+  --type developer \
+  --max-tasks 3 \
+  --model "gpt-4" \
+  --endpoint "https://api.openai.com/v1"
+
+# Create a testing agent
+tickets agent create "TestBot" \
+  --description "AI testing specialist for QA and validation" \
+  --type tester \
+  --max-tasks 5 \
+  --model "claude-3-opus"
+```
+
+**Agent Types:**
+- `developer` - Coding and implementation tasks
+- `reviewer` - Code review and quality assurance
+- `tester` - Testing, QA, and validation
+- `analyst` - Analysis and research tasks
+- `documenter` - Documentation creation/maintenance
+- `project_manager` - Task coordination and workflow management
+- `general` - Can handle any task type
+
+### Managing Agents
+
+```bash
+# List all agents
+tickets agent list
+
+# View detailed agent information
+tickets agent show AGENT-CODEBOT
+
+# List agents in different formats
+tickets agent list --format json    # JSON output
+tickets agent list --format simple  # Simple list
+tickets agent list --all            # Include inactive agents
+```
+
+### Task Assignment
+
+#### Manual Assignment
+```bash
+# Assign specific task to specific agent
+tickets agent assign TICKET-1 AGENT-CODEBOT code \
+  "Implement JWT authentication middleware" \
+  --priority high \
+  --instructions "Create Express middleware for JWT validation, add login/logout endpoints"
+```
+
+#### Automatic Assignment
+```bash
+# Let system choose best agent for the task
+tickets agent auto-assign TICKET-2 test \
+  "Write comprehensive unit tests for auth system" \
+  --priority medium
+```
+
+The auto-assignment system considers:
+- Agent type matching task type
+- Current agent workload and availability
+- Agent performance history and success rates
+- Task priority and estimated complexity
+
+### Task Management
+
+```bash
+# List all agent tasks
+tickets agent tasks
+
+# Filter tasks by agent
+tickets agent tasks --agent AGENT-CODEBOT
+
+# Filter by status
+tickets agent tasks --status assigned
+tickets agent tasks --status in-progress
+tickets agent tasks --status completed
+
+# Filter by ticket
+tickets agent tasks --ticket TICKET-1
+```
+
+### Agent Performance Tracking
+
+Each agent automatically tracks:
+- **Success Rate**: Percentage of completed vs failed tasks
+- **Execution Time**: Average time spent on different task types
+- **Response Time**: How quickly agent starts assigned tasks
+- **Task Breakdown**: Performance metrics by task category
+- **Activity Status**: Last activity timestamp and availability
+
+### Workflow Integration
+
+#### With Regular Tickets
+```bash
+# Create ticket
+tickets create "Implement user dashboard" -d "Create responsive user dashboard" -p high
+
+# Assign to agent for implementation
+tickets agent assign DASHBOARD-1 AGENT-CODEBOT code \
+  "Build user dashboard with React" \
+  --instructions "Use Material-UI components, implement responsive design"
+
+# Assign testing to another agent
+tickets agent auto-assign DASHBOARD-1 test \
+  "Test dashboard functionality and responsiveness"
+
+# Check progress
+tickets agent tasks --ticket DASHBOARD-1
+tickets show DASHBOARD-1
+```
+
+#### Task Status Lifecycle
+1. **assigned** - Task created and assigned to agent
+2. **in-progress** - Agent has started working on task
+3. **completed** - Task finished successfully
+4. **failed** - Task encountered errors or couldn't be completed
+
+### Agent Workflow Examples
+
+#### Development Team Setup
+```bash
+# Create specialized agents
+tickets agent create "BackendBot" --type developer --model "gpt-4" --max-tasks 2
+tickets agent create "FrontendBot" --type developer --model "claude-3-opus" --max-tasks 3
+tickets agent create "QABot" --type tester --model "gpt-4" --max-tasks 5
+tickets agent create "DocBot" --type documenter --model "claude-3-haiku" --max-tasks 4
+
+# Create feature with multiple tasks
+tickets create "User Authentication System" -p high
+tickets agent assign AUTH-1 AGENT-BACKENDBOT code "JWT backend implementation"
+tickets agent assign AUTH-1 AGENT-FRONTENDBOT code "Login UI components"
+tickets agent auto-assign AUTH-1 test "Authentication flow testing"
+tickets agent auto-assign AUTH-1 document "API documentation update"
+```
+
+#### Code Review Workflow
+```bash
+# Create reviewer agent
+tickets agent create "ReviewBot" --type reviewer --model "gpt-4" --max-tasks 10
+
+# Assign code review tasks
+tickets agent assign FEATURE-1 AGENT-REVIEWBOT review \
+  "Review pull request #123" \
+  --instructions "Check code quality, security, and test coverage"
+```
+
 ## Advanced Usage
 
 ### Custom Labels

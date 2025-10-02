@@ -118,7 +118,8 @@ repo-tickets/
 ├── repo_tickets/           # Main package
 │   ├── cli.py             # CLI interface and commands
 │   ├── tui.py             # TUI interface with Textual
-│   ├── models.py          # Data models (Ticket, TimeLog, etc.)
+│   ├── models.py          # Data models (Ticket, Agent, TimeLog, etc.)
+│   ├── agents.py          # AI agent management and storage
 │   ├── storage.py         # JSON storage backend
 │   ├── vcs.py             # VCS integration (git/hg/jj)
 │   └── reports.py         # HTML report generation
@@ -131,7 +132,10 @@ repo-tickets/
 ## 🎫 Working with Tickets
 
 ### Data Models
-- `Ticket`: Core ticket with status, priority, time tracking
+- `Ticket`: Core ticket with status, priority, time tracking, agent assignments
+- `Agent`: AI agent with capabilities, metrics, and task management
+- `AgentTask`: Tasks assigned to agents with execution tracking
+- `AgentMetrics`: Performance tracking for agent success rates and timing
 - `JournalEntry`: Progress updates with PM tracking features
 - `TimeLog`: Time tracking with work types and descriptions
 - `Comment`: User comments and discussions
