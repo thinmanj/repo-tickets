@@ -828,12 +828,13 @@ class Agent:
         if data.get('last_seen') and isinstance(data['last_seen'], str):
             data['last_seen'] = datetime.fromisoformat(data['last_seen'])
         
-        # Convert metrics datetime
-        if data.get('metrics', {}).get('last_activity'):
-            if isinstance(data['metrics']['last_activity'], str):
+        # Process metrics field
+        if 'metrics' in data:
+            # Convert datetime fields if present
+            if data['metrics'].get('last_activity') and isinstance(data['metrics']['last_activity'], str):
                 data['metrics']['last_activity'] = datetime.fromisoformat(data['metrics']['last_activity'])
             
-            # Reconstruct AgentMetrics object
+            # Always reconstruct AgentMetrics object
             data['metrics'] = AgentMetrics(**data['metrics'])
         
         # Reconstruct AgentCapability objects
