@@ -800,11 +800,11 @@ def tui():
         click.echo(f"{Fore.GREEN}🚀 Launching Repo Tickets TUI...{Style.RESET_ALL}")
         run_tui()
         
-        except KeyboardInterrupt:
-            click.echo(f"\n{Fore.BLUE}👋 TUI closed by user.{Style.RESET_ALL}")
-        except Exception as e:
-            click.echo(f"{Fore.RED}❌ Error launching TUI: {e}{Style.RESET_ALL}", err=True)
-            sys.exit(1)
+    except KeyboardInterrupt:
+        click.echo(f"\n{Fore.BLUE}👋 TUI closed by user.{Style.RESET_ALL}")
+    except Exception as e:
+        click.echo(f"{Fore.RED}❌ Error launching TUI: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
 
 
 # AI Agent Management Commands
