@@ -148,6 +148,10 @@ class Ticket:
     blocks: List[str] = field(default_factory=list)  # Ticket IDs
     related_to: List[str] = field(default_factory=list)  # Ticket IDs
     
+    # AI Agent support
+    assigned_agent: Optional[str] = None  # Agent ID
+    agent_tasks: List[str] = field(default_factory=list)  # Task IDs
+    
     def __post_init__(self):
         """Validate ticket data after initialization."""
         self._validate()
@@ -312,7 +316,7 @@ class Ticket:
         allowed_fields = {
             'title', 'description', 'status', 'priority', 'assignee', 
             'labels', 'branch', 'commit', 'estimated_hours', 'story_points',
-            'blocked_by', 'blocks', 'related_to'
+            'blocked_by', 'blocks', 'related_to', 'assigned_agent', 'agent_tasks'
         }
         
         for key, value in kwargs.items():
@@ -404,6 +408,40 @@ class Ticket:
     def label_set(self) -> Set[str]:
         """Get labels as a set for easier operations."""
         return set(self.labels)
+    
+    # Agent-related methods
+    
+    def assign_agent(self, agent_id: str) -> None:
+        """Assign an AI agent to this ticket."""
+        self.assigned_agent = agent_id
+        self.updated_at = datetime.now()
+    
+    def unassign_agent(self) -> None:
+        """Remove agent assignment from this ticket."""
+        self.assigned_agent = None
+        self.updated_at = datetime.now()
+    
+    def add_agent_task(self, task_id: str) -> None:
+        """Add an agent task to this ticket."""
+        if task_id not in self.agent_tasks:
+            self.agent_tasks.append(task_id)
+            self.updated_at = datetime.now()
+    
+    def remove_agent_task(self, task_id: str) -> None:
+        """Remove an agent task from this ticket."""
+        if task_id in self.agent_tasks:
+            self.agent_tasks.remove(task_id)
+            self.updated_at = datetime.now()
+    
+    @property
+    def has_agent(self) -> bool:
+        """Check if this ticket has an assigned agent."""
+        return self.assigned_agent is not None
+    
+    @property
+    def has_active_agent_tasks(self) -> bool:
+        """Check if this ticket has active agent tasks."""
+        return len(self.agent_tasks) > 0
 
 
 def generate_ticket_id(title: str, existing_ids: Set[str]) -> str:
@@ -493,3 +531,347 @@ def validate_labels(labels: List[str], config: TicketConfig) -> None:
     invalid_labels = [label for label in labels if label not in config.labels]
     if invalid_labels:
         raise ValueError(f"Invalid labels: {', '.join(invalid_labels)}. Allowed: {', '.join(config.labels)}")
+
+
+# AI Agent Support
+
+class AgentStatus(Enum):
+    """Status of AI agents."""
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    BUSY = "busy"
+    ERROR = "error"
+    MAINTENANCE = "maintenance"
+
+
+class AgentType(Enum):
+    """Types of AI agents."""
+    DEVELOPER = "developer"
+    REVIEWER = "reviewer"
+    TESTER = "tester"
+    ANALYST = "analyst"
+    DOCUMENTER = "documenter"
+    PROJECT_MANAGER = "project_manager"
+    GENERAL = "general"
+
+
+class AgentTaskStatus(Enum):
+    """Status of agent-assigned tasks."""
+    ASSIGNED = "assigned"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    PAUSED = "paused"
+
+
+@dataclass
+class AgentCapability:
+    """Capability definition for an AI agent."""
+    name: str
+    description: str
+    confidence_level: float  # 0.0 to 1.0
+    enabled: bool = True
+    parameters: Dict[str, Any] = field(default_factory=dict)
+    
+    def __post_init__(self):
+        """Validate capability data."""
+        if not 0.0 <= self.confidence_level <= 1.0:
+            raise ValueError("Confidence level must be between 0.0 and 1.0")
+
+
+@dataclass
+class AgentMetrics:
+    """Performance metrics for an AI agent."""
+    tasks_completed: int = 0
+    tasks_failed: int = 0
+    total_execution_time_minutes: int = 0
+    average_response_time_seconds: float = 0.0
+    success_rate: float = 0.0
+    last_activity: Optional[datetime] = None
+    
+    def update_success_rate(self):
+        """Recalculate success rate based on completed vs failed tasks."""
+        total_tasks = self.tasks_completed + self.tasks_failed
+        if total_tasks > 0:
+            self.success_rate = self.tasks_completed / total_tasks
+        else:
+            self.success_rate = 0.0
+
+
+@dataclass
+class AgentTask:
+    """A task assigned to an AI agent."""
+    id: str
+    ticket_id: str
+    agent_id: str
+    task_type: str  # 'code', 'review', 'test', 'document', 'analyze'
+    description: str
+    status: str = AgentTaskStatus.ASSIGNED.value
+    priority: str = "medium"
+    
+    # Task execution data
+    assigned_at: datetime = field(default_factory=datetime.now)
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    
+    # Task specification
+    instructions: str = ""
+    expected_output: str = ""
+    context: Dict[str, Any] = field(default_factory=dict)
+    
+    # Results
+    output: str = ""
+    artifacts: List[str] = field(default_factory=list)  # Files, URLs, etc.
+    error_message: str = ""
+    
+    # Performance tracking
+    estimated_duration_minutes: Optional[int] = None
+    actual_duration_minutes: Optional[int] = None
+    
+    def __post_init__(self):
+        """Validate task data."""
+        if not self.description.strip():
+            raise ValueError("Task description cannot be empty")
+    
+    def start_task(self) -> None:
+        """Mark task as started."""
+        if self.status != AgentTaskStatus.ASSIGNED.value:
+            raise ValueError(f"Cannot start task in {self.status} status")
+        
+        self.status = AgentTaskStatus.IN_PROGRESS.value
+        self.started_at = datetime.now()
+    
+    def complete_task(self, output: str = "", artifacts: List[str] = None) -> None:
+        """Mark task as completed."""
+        if self.status != AgentTaskStatus.IN_PROGRESS.value:
+            raise ValueError(f"Cannot complete task in {self.status} status")
+        
+        self.status = AgentTaskStatus.COMPLETED.value
+        self.completed_at = datetime.now()
+        self.output = output
+        
+        if artifacts:
+            self.artifacts = artifacts
+        
+        # Calculate actual duration
+        if self.started_at:
+            delta = self.completed_at - self.started_at
+            self.actual_duration_minutes = int(delta.total_seconds() / 60)
+    
+    def fail_task(self, error_message: str) -> None:
+        """Mark task as failed."""
+        self.status = AgentTaskStatus.FAILED.value
+        self.completed_at = datetime.now()
+        self.error_message = error_message
+        
+        # Calculate actual duration
+        if self.started_at:
+            delta = self.completed_at - self.started_at
+            self.actual_duration_minutes = int(delta.total_seconds() / 60)
+    
+    @property
+    def duration_minutes(self) -> Optional[int]:
+        """Get task duration in minutes."""
+        if self.actual_duration_minutes is not None:
+            return self.actual_duration_minutes
+        
+        if self.started_at:
+            end_time = self.completed_at or datetime.now()
+            delta = end_time - self.started_at
+            return int(delta.total_seconds() / 60)
+        
+        return None
+
+
+@dataclass
+class Agent:
+    """An AI agent that can work on tickets."""
+    id: str
+    name: str
+    description: str = ""
+    agent_type: str = AgentType.GENERAL.value
+    status: str = AgentStatus.ACTIVE.value
+    
+    # Agent configuration
+    capabilities: List[AgentCapability] = field(default_factory=list)
+    max_concurrent_tasks: int = 1
+    preferred_task_types: List[str] = field(default_factory=list)
+    
+    # Connection information
+    endpoint: Optional[str] = None
+    api_key: Optional[str] = None
+    model: Optional[str] = None
+    
+    # Metadata
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+    last_seen: Optional[datetime] = None
+    
+    # Performance tracking
+    metrics: AgentMetrics = field(default_factory=AgentMetrics)
+    
+    # Current assignments
+    active_tasks: List[str] = field(default_factory=list)  # Task IDs
+    
+    def __post_init__(self):
+        """Validate agent data."""
+        if not self.name.strip():
+            raise ValueError("Agent name cannot be empty")
+        
+        if not self.id.strip():
+            raise ValueError("Agent ID cannot be empty")
+        
+        # Validate agent type
+        valid_types = [t.value for t in AgentType]
+        if self.agent_type not in valid_types:
+            raise ValueError(f"Invalid agent type: {self.agent_type}. Must be one of: {valid_types}")
+        
+        # Validate status
+        valid_statuses = [s.value for s in AgentStatus]
+        if self.status not in valid_statuses:
+            raise ValueError(f"Invalid status: {self.status}. Must be one of: {valid_statuses}")
+    
+    def add_capability(self, name: str, description: str, confidence: float, **kwargs) -> AgentCapability:
+        """Add a capability to the agent."""
+        capability = AgentCapability(
+            name=name,
+            description=description,
+            confidence_level=confidence,
+            **kwargs
+        )
+        self.capabilities.append(capability)
+        self.updated_at = datetime.now()
+        return capability
+    
+    def remove_capability(self, name: str) -> bool:
+        """Remove a capability by name."""
+        original_count = len(self.capabilities)
+        self.capabilities = [c for c in self.capabilities if c.name != name]
+        
+        if len(self.capabilities) < original_count:
+            self.updated_at = datetime.now()
+            return True
+        return False
+    
+    def get_capability(self, name: str) -> Optional[AgentCapability]:
+        """Get a capability by name."""
+        return next((c for c in self.capabilities if c.name == name), None)
+    
+    def is_available(self) -> bool:
+        """Check if agent is available for new tasks."""
+        if self.status != AgentStatus.ACTIVE.value:
+            return False
+        
+        return len(self.active_tasks) < self.max_concurrent_tasks
+    
+    def can_handle_task(self, task_type: str) -> bool:
+        """Check if agent can handle a specific task type."""
+        if not self.preferred_task_types:
+            return True  # Agent can handle any task type
+        
+        return task_type in self.preferred_task_types
+    
+    def assign_task(self, task_id: str) -> None:
+        """Assign a task to this agent."""
+        if not self.is_available():
+            raise ValueError(f"Agent {self.name} is not available for new tasks")
+        
+        if task_id not in self.active_tasks:
+            self.active_tasks.append(task_id)
+            self.updated_at = datetime.now()
+    
+    def unassign_task(self, task_id: str) -> None:
+        """Remove a task assignment from this agent."""
+        if task_id in self.active_tasks:
+            self.active_tasks.remove(task_id)
+            self.updated_at = datetime.now()
+    
+    def update_status(self, status: str) -> None:
+        """Update agent status."""
+        valid_statuses = [s.value for s in AgentStatus]
+        if status not in valid_statuses:
+            raise ValueError(f"Invalid status: {status}. Must be one of: {valid_statuses}")
+        
+        self.status = status
+        self.updated_at = datetime.now()
+        self.last_seen = datetime.now()
+    
+    def ping(self) -> None:
+        """Update last seen timestamp."""
+        self.last_seen = datetime.now()
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert agent to dictionary for serialization."""
+        data = asdict(self)
+        
+        # Convert datetime objects to ISO strings
+        data['created_at'] = self.created_at.isoformat()
+        data['updated_at'] = self.updated_at.isoformat()
+        
+        if self.last_seen:
+            data['last_seen'] = self.last_seen.isoformat()
+        
+        if self.metrics.last_activity:
+            data['metrics']['last_activity'] = self.metrics.last_activity.isoformat()
+        
+        return data
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'Agent':
+        """Create agent from dictionary."""
+        # Convert ISO strings back to datetime objects
+        if isinstance(data.get('created_at'), str):
+            data['created_at'] = datetime.fromisoformat(data['created_at'])
+        if isinstance(data.get('updated_at'), str):
+            data['updated_at'] = datetime.fromisoformat(data['updated_at'])
+        if data.get('last_seen') and isinstance(data['last_seen'], str):
+            data['last_seen'] = datetime.fromisoformat(data['last_seen'])
+        
+        # Convert metrics datetime
+        if data.get('metrics', {}).get('last_activity'):
+            if isinstance(data['metrics']['last_activity'], str):
+                data['metrics']['last_activity'] = datetime.fromisoformat(data['metrics']['last_activity'])
+            
+            # Reconstruct AgentMetrics object
+            data['metrics'] = AgentMetrics(**data['metrics'])
+        
+        # Reconstruct AgentCapability objects
+        if 'capabilities' in data:
+            capabilities = []
+            for cap_data in data['capabilities']:
+                capabilities.append(AgentCapability(**cap_data))
+            data['capabilities'] = capabilities
+        
+        return cls(**data)
+
+
+def generate_agent_id(name: str, existing_ids: Set[str]) -> str:
+    """
+    Generate a unique agent ID based on the name.
+    
+    Args:
+        name: The agent name
+        existing_ids: Set of existing agent IDs to avoid duplicates
+        
+    Returns:
+        A unique agent ID in format AGENT-NAME or AGENT-NAME-N
+    """
+    # Clean up name for ID
+    clean_name = re.sub(r'[^a-zA-Z0-9]', '-', name.upper())
+    clean_name = re.sub(r'-+', '-', clean_name).strip('-')[:16]
+    
+    if not clean_name:
+        clean_name = "AGENT"
+    
+    base_id = f"AGENT-{clean_name}"
+    if base_id not in existing_ids:
+        return base_id
+    
+    # Find the next available number
+    counter = 1
+    while True:
+        agent_id = f"{base_id}-{counter}"
+        if agent_id not in existing_ids:
+            return agent_id
+        counter += 1

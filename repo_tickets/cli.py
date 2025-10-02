@@ -807,5 +807,354 @@ def tui():
         sys.exit(1)
 
 
+# AI Agent Management Commands
+
+@main.group()
+def agent():
+    """🤖 Manage AI agents for ticket automation."""
+    pass
+
+
+@agent.command()
+@click.option('--all', '-a', is_flag=True, help='Show all agents including inactive')
+@click.option('--format', 'output_format', default='table', type=click.Choice(['table', 'json', 'simple']), 
+              help='Output format')
+def list(all, output_format):
+    """List available AI agents."""
+    try:
+        from .agents import AgentStorage
+        from .models import AgentStatus
+        
+        storage = AgentStorage()
+        if not storage.is_initialized():
+            click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+            sys.exit(1)
+        
+        # Get agents
+        if all:
+            agents = storage.list_agents()
+        else:
+            agents = storage.list_agents(status=AgentStatus.ACTIVE.value)
+        
+        if not agents:
+            click.echo(f"{Fore.YELLOW}No agents found.{Style.RESET_ALL}")
+            return
+        
+        if output_format == 'json':
+            import json
+            data = [agent.to_dict() for agent in agents]
+            click.echo(json.dumps(data, indent=2, default=str))
+        elif output_format == 'simple':
+            for agent in agents:
+                status_color = Fore.GREEN if agent.status == 'active' else Fore.YELLOW
+                click.echo(f"{agent.id}: {agent.name} ({status_color}{agent.status}{Style.RESET_ALL})")
+        else:
+            # Table format
+            from tabulate import tabulate
+            
+            table_data = []
+            for agent in agents:
+                status_icon = {
+                    'active': f"{Fore.GREEN}✓{Style.RESET_ALL}",
+                    'inactive': f"{Fore.YELLOW}●{Style.RESET_ALL}",
+                    'busy': f"{Fore.BLUE}▶{Style.RESET_ALL}",
+                    'error': f"{Fore.RED}✗{Style.RESET_ALL}",
+                    'maintenance': f"{Fore.MAGENTA}🔧{Style.RESET_ALL}"
+                }.get(agent.status, agent.status)
+                
+                table_data.append([
+                    agent.id,
+                    agent.name,
+                    agent.agent_type,
+                    status_icon,
+                    len(agent.active_tasks),
+                    f"{agent.metrics.success_rate:.1%}",
+                    agent.metrics.tasks_completed,
+                    agent.created_at.strftime('%Y-%m-%d')
+                ])
+            
+            headers = ['ID', 'Name', 'Type', 'Status', 'Tasks', 'Success', 'Completed', 'Created']
+            click.echo(tabulate(table_data, headers=headers, tablefmt='grid'))
+            click.echo(f"\n{len(agents)} agents total")
+            
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error listing agents: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@agent.command()
+@click.argument('name')
+@click.option('--description', '-d', help='Agent description')
+@click.option('--type', 'agent_type', default='general', 
+              type=click.Choice(['developer', 'reviewer', 'tester', 'analyst', 'documenter', 'project_manager', 'general']),
+              help='Agent type')
+@click.option('--max-tasks', default=1, type=int, help='Maximum concurrent tasks')
+@click.option('--endpoint', help='API endpoint for the agent')
+@click.option('--model', help='AI model identifier')
+def create(name, description, agent_type, max_tasks, endpoint, model):
+    """Create a new AI agent."""
+    try:
+        from .agents import AgentStorage
+        
+        storage = AgentStorage()
+        if not storage.is_initialized():
+            click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+            sys.exit(1)
+        
+        # Create agent
+        agent = storage.create_agent(
+            name=name,
+            description=description or f"AI agent for {agent_type} tasks",
+            agent_type=agent_type,
+            max_concurrent_tasks=max_tasks,
+            endpoint=endpoint,
+            model=model
+        )
+        
+        click.echo(f"{Fore.GREEN}✓ Created agent {agent.id}: {agent.name}{Style.RESET_ALL}")
+        click.echo(f"  Type: {agent.agent_type}")
+        click.echo(f"  Max tasks: {agent.max_concurrent_tasks}")
+        if agent.endpoint:
+            click.echo(f"  Endpoint: {agent.endpoint}")
+        if agent.model:
+            click.echo(f"  Model: {agent.model}")
+            
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error creating agent: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@agent.command()
+@click.argument('agent_id')
+def show(agent_id):
+    """Show detailed information about an agent."""
+    try:
+        from .agents import AgentStorage
+        
+        storage = AgentStorage()
+        if not storage.is_initialized():
+            click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+            sys.exit(1)
+        
+        agent = storage.load_agent(agent_id)
+        if not agent:
+            click.echo(f"{Fore.RED}Error: Agent {agent_id} not found{Style.RESET_ALL}", err=True)
+            sys.exit(1)
+        
+        stats = storage.get_agent_stats(agent_id)
+        
+        # Agent info
+        click.echo(f"{Fore.CYAN}Agent: {agent.name} ({agent.id}){Style.RESET_ALL}")
+        click.echo(f"Type: {agent.agent_type}")
+        click.echo(f"Status: {agent.status}")
+        click.echo(f"Description: {agent.description or 'No description'}")
+        click.echo(f"Created: {agent.created_at.strftime('%Y-%m-%d %H:%M')}")
+        
+        if agent.last_seen:
+            click.echo(f"Last seen: {agent.last_seen.strftime('%Y-%m-%d %H:%M')}")
+        
+        # Configuration
+        click.echo(f"\n{Fore.YELLOW}Configuration:{Style.RESET_ALL}")
+        click.echo(f"Max concurrent tasks: {agent.max_concurrent_tasks}")
+        if agent.preferred_task_types:
+            click.echo(f"Preferred task types: {', '.join(agent.preferred_task_types)}")
+        if agent.endpoint:
+            click.echo(f"Endpoint: {agent.endpoint}")
+        if agent.model:
+            click.echo(f"Model: {agent.model}")
+        
+        # Capabilities
+        if agent.capabilities:
+            click.echo(f"\n{Fore.YELLOW}Capabilities:{Style.RESET_ALL}")
+            for cap in agent.capabilities:
+                status = "enabled" if cap.enabled else "disabled"
+                click.echo(f"  • {cap.name}: {cap.confidence_level:.1%} confidence ({status})")
+                if cap.description:
+                    click.echo(f"    {cap.description}")
+        
+        # Performance metrics
+        click.echo(f"\n{Fore.YELLOW}Performance Metrics:{Style.RESET_ALL}")
+        click.echo(f"Total tasks: {stats['total_tasks']}")
+        click.echo(f"Active tasks: {stats['active_tasks']}")
+        click.echo(f"Completed: {stats['completed_tasks']}")
+        click.echo(f"Failed: {stats['failed_tasks']}")
+        click.echo(f"Success rate: {agent.metrics.success_rate:.1%}")
+        
+        if agent.metrics.total_execution_time_minutes > 0:
+            hours = agent.metrics.total_execution_time_minutes / 60
+            click.echo(f"Total execution time: {hours:.1f}h")
+        
+        # Task type breakdown
+        if stats['task_types']:
+            click.echo(f"\n{Fore.YELLOW}Task Type Breakdown:{Style.RESET_ALL}")
+            for task_type, counts in stats['task_types'].items():
+                success_rate = counts['completed'] / counts['total'] if counts['total'] > 0 else 0
+                click.echo(f"  {task_type}: {counts['total']} total, {success_rate:.1%} success rate")
+        
+        # Recent tasks
+        if stats['recent_tasks']:
+            click.echo(f"\n{Fore.YELLOW}Recent Tasks:{Style.RESET_ALL}")
+            for task in stats['recent_tasks'][:5]:
+                status_color = {
+                    'completed': Fore.GREEN,
+                    'failed': Fore.RED,
+                    'in_progress': Fore.BLUE,
+                    'assigned': Fore.YELLOW
+                }.get(task.status, '')
+                click.echo(f"  {task.id}: {task.description[:50]}... ({status_color}{task.status}{Style.RESET_ALL})")
+                
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error showing agent: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@agent.command()
+@click.argument('ticket_id')
+@click.argument('agent_id')
+@click.argument('task_type')
+@click.argument('description')
+@click.option('--priority', default='medium', type=click.Choice(['critical', 'high', 'medium', 'low']), 
+              help='Task priority')
+@click.option('--instructions', help='Detailed instructions for the task')
+def assign(ticket_id, agent_id, task_type, description, priority, instructions):
+    """Assign a task to an agent."""
+    try:
+        from .agents import AgentStorage
+        
+        storage = AgentStorage()
+        if not storage.is_initialized():
+            click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+            sys.exit(1)
+        
+        task = storage.assign_task(
+            ticket_id=ticket_id.upper(),
+            agent_id=agent_id,
+            task_type=task_type,
+            description=description,
+            priority=priority,
+            instructions=instructions or ""
+        )
+        
+        click.echo(f"{Fore.GREEN}✓ Assigned task {task.id} to agent {agent_id}{Style.RESET_ALL}")
+        click.echo(f"  Ticket: {task.ticket_id}")
+        click.echo(f"  Type: {task.task_type}")
+        click.echo(f"  Priority: {task.priority}")
+        click.echo(f"  Description: {task.description}")
+        
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error assigning task: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@agent.command()
+@click.argument('ticket_id')
+@click.argument('task_type')
+@click.argument('description')
+@click.option('--priority', default='medium', type=click.Choice(['critical', 'high', 'medium', 'low']),
+              help='Task priority')
+def auto_assign(ticket_id, task_type, description, priority):
+    """Automatically assign a task to the best available agent."""
+    try:
+        from .agents import AgentStorage
+        
+        storage = AgentStorage()
+        if not storage.is_initialized():
+            click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+            sys.exit(1)
+        
+        task = storage.auto_assign_task(
+            ticket_id=ticket_id.upper(),
+            task_type=task_type,
+            description=description,
+            priority=priority
+        )
+        
+        if task:
+            click.echo(f"{Fore.GREEN}✓ Auto-assigned task {task.id} to agent {task.agent_id}{Style.RESET_ALL}")
+            click.echo(f"  Ticket: {task.ticket_id}")
+            click.echo(f"  Type: {task.task_type}")
+            click.echo(f"  Description: {task.description}")
+        else:
+            click.echo(f"{Fore.YELLOW}No available agents found for task type: {task_type}{Style.RESET_ALL}")
+            click.echo("Consider creating an agent or checking agent availability.")
+        
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error auto-assigning task: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@agent.command()
+@click.option('--agent', help='Filter by agent ID')
+@click.option('--ticket', help='Filter by ticket ID')
+@click.option('--status', help='Filter by task status')
+@click.option('--format', 'output_format', default='table', type=click.Choice(['table', 'json']),
+              help='Output format')
+def tasks(agent, ticket, status, output_format):
+    """List agent tasks."""
+    try:
+        from .agents import AgentStorage
+        
+        storage = AgentStorage()
+        if not storage.is_initialized():
+            click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+            sys.exit(1)
+        
+        tasks = storage.list_tasks(
+            agent_id=agent,
+            ticket_id=ticket.upper() if ticket else None,
+            status=status
+        )
+        
+        if not tasks:
+            click.echo(f"{Fore.YELLOW}No tasks found.{Style.RESET_ALL}")
+            return
+        
+        if output_format == 'json':
+            import json
+            data = [task.__dict__ for task in tasks]
+            # Convert datetime objects to strings for JSON serialization
+            for task_data in data:
+                for key, value in task_data.items():
+                    if hasattr(value, 'isoformat'):
+                        task_data[key] = value.isoformat()
+            click.echo(json.dumps(data, indent=2, default=str))
+        else:
+            # Table format
+            from tabulate import tabulate
+            
+            table_data = []
+            for task in tasks:
+                status_icon = {
+                    'assigned': f"{Fore.YELLOW}●{Style.RESET_ALL}",
+                    'in_progress': f"{Fore.BLUE}▶{Style.RESET_ALL}", 
+                    'completed': f"{Fore.GREEN}✓{Style.RESET_ALL}",
+                    'failed': f"{Fore.RED}✗{Style.RESET_ALL}",
+                    'cancelled': f"{Fore.MAGENTA}■{Style.RESET_ALL}"
+                }.get(task.status, task.status)
+                
+                duration = f"{task.duration_minutes}m" if task.duration_minutes else "-"
+                description = task.description[:50] + "..." if len(task.description) > 50 else task.description
+                
+                table_data.append([
+                    task.id,
+                    task.ticket_id,
+                    task.agent_id,
+                    task.task_type,
+                    description,
+                    status_icon,
+                    task.priority,
+                    duration,
+                    task.assigned_at.strftime('%m-%d %H:%M')
+                ])
+            
+            headers = ['Task ID', 'Ticket', 'Agent', 'Type', 'Description', 'Status', 'Priority', 'Duration', 'Assigned']
+            click.echo(tabulate(table_data, headers=headers, tablefmt='grid'))
+            click.echo(f"\n{len(tasks)} tasks total")
+            
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error listing tasks: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
 if __name__ == '__main__':
     main()
