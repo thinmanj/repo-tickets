@@ -35,7 +35,7 @@ def test_requirements_model():
         description="Implement secure user authentication system",
         priority="high",
         acceptance_criteria=["Must use bcrypt", "Session timeout 30 min"],
-        author="test-user"
+        author="julio"
     )
     
     assert req.title == "User Authentication"
@@ -80,7 +80,7 @@ def test_user_stories_model():
         priority="medium",
         story_points=5,
         acceptance_criteria=["Timer can be started/stopped", "Time is recorded accurately"],
-        author="test-user"
+        author="julio"
     )
     
     assert story.persona == "developer"
@@ -130,7 +130,7 @@ def test_gherkin_scenarios_model():
         when=["I enter username and password", "I click login button"],
         then=["I should be logged in", "I should see the dashboard"],
         tags=["authentication", "smoke"],
-        author="test-user"
+        author="julio"
     )
     
     assert scenario.title == "Successful user login"
@@ -178,8 +178,8 @@ def test_ticket_requirements_integration():
         id="TEST-001",
         title="User Authentication Feature",
         description="Implement comprehensive user authentication",
-        reporter="test-user",
-        reporter_email="test@example.com"
+        reporter="julio",
+        reporter_email="thinmanj@gmail.com"
     )
     
     # Add requirements
@@ -188,13 +188,13 @@ def test_ticket_requirements_integration():
         description="Implement secure password handling",
         priority="critical",
         acceptance_criteria=["Bcrypt encryption", "Minimum 8 characters"],
-        author="test-user"
+        author="julio"
     )
     
     req2 = ticket.add_requirement(
         title="Session Management", 
         priority="high",
-        author="test-user"
+        author="julio"
     )
     
     assert len(ticket.requirements) == 2
@@ -209,7 +209,7 @@ def test_ticket_requirements_integration():
         benefit="I can access my account safely",
         priority="high",
         story_points=8,
-        author="test-user"
+        author="julio"
     )
     
     story2 = ticket.add_user_story(
@@ -217,7 +217,7 @@ def test_ticket_requirements_integration():
         goal="manage user sessions",
         benefit="I can maintain security",
         story_points=3,
-        author="test-user"
+        author="julio"
     )
     
     assert len(ticket.user_stories) == 2
@@ -249,7 +249,7 @@ def test_ticket_requirements_integration():
         when=["I enter valid credentials"],
         then=["I should be logged in"],
         tags=["authentication", "happy-path"],
-        author="test-user"
+        author="julio"
     )
     
     gherkin_text = """@authentication @negative
@@ -258,7 +258,7 @@ Scenario: Invalid login attempt
   When I enter invalid credentials
   Then I should see an error message"""
     
-    scenario2 = ticket.add_gherkin_from_text(gherkin_text, author="test-user")
+    scenario2 = ticket.add_gherkin_from_text(gherkin_text, author="julio")
     
     assert len(ticket.gherkin_scenarios) == 2
     assert ticket.gherkin_scenarios_count == 2
@@ -308,15 +308,15 @@ def test_ticket_serialization_with_requirements():
     original_ticket = Ticket(
         id="SERIAL-001",
         title="Serialization Test",
-        reporter="test-user",
-        reporter_email="test@example.com"
+        reporter="julio",
+        reporter_email="thinmanj@gmail.com"
     )
     
     # Add various requirements
     original_ticket.add_requirement(
         title="Test Requirement",
         priority="medium",
-        author="test-user"
+        author="julio"
     )
     
     original_ticket.add_user_story(
@@ -324,7 +324,7 @@ def test_ticket_serialization_with_requirements():
         goal="validate serialization",
         benefit="data persists correctly",
         story_points=2,
-        author="test-user"
+        author="julio"
     )
     
     original_ticket.add_expected_result(
@@ -337,7 +337,7 @@ def test_ticket_serialization_with_requirements():
         given=["A ticket with requirements exists"],
         when=["The ticket is serialized"],
         then=["All requirement data is preserved"],
-        author="test-user"
+        author="julio"
     )
     
     # Serialize to dictionary
@@ -379,7 +379,7 @@ def test_storage_with_requirements():
         
         # Initialize a git repository (required for TicketStorage)
         os.system("git init .")
-        os.system("git config user.email 'test@example.com'")
+        os.system("git config user.email 'thinmanj@gmail.com'")
         os.system("git config user.name 'Test User'")
         
         # Initialize storage
@@ -390,8 +390,8 @@ def test_storage_with_requirements():
         ticket = Ticket(
             id="STORAGE-001",
             title="Storage Test Ticket",
-            reporter="test-user",
-            reporter_email="test@example.com"
+            reporter="julio",
+            reporter_email="thinmanj@gmail.com"
         )
         
         # Add comprehensive requirements
@@ -400,7 +400,7 @@ def test_storage_with_requirements():
             description="Data must persist correctly",
             priority="high",
             acceptance_criteria=["Data saved to disk", "Data loads correctly"],
-            author="test-user"
+            author="julio"
         )
         
         ticket.add_user_story(
@@ -408,7 +408,7 @@ def test_storage_with_requirements():
             goal="save my work",
             benefit="I don't lose data",
             story_points=3,
-            author="test-user"
+            author="julio"
         )
         
         ticket.add_expected_result(
@@ -425,7 +425,7 @@ Scenario: Save and load ticket
   Then the ticket should still exist
   And all requirements should be intact"""
         
-        ticket.add_gherkin_from_text(gherkin_text, author="test-user")
+        ticket.add_gherkin_from_text(gherkin_text, author="julio")
         
         # Save ticket
         storage.save_ticket(ticket)
