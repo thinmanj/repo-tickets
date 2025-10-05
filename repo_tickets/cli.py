@@ -1897,5 +1897,514 @@ def tasks(agent, ticket, status, output_format):
         sys.exit(1)
 
 
+# Epic Management Commands
+
+@main.group()
+def epic():
+    """🎯 Manage epics - collections of related tickets."""
+    pass
+
+
+@epic.command()
+@click.argument('title')
+@click.option('--description', '-d', help='Epic description')
+@click.option('--priority', default='medium', type=click.Choice(['critical', 'high', 'medium', 'low']),
+              help='Epic priority')
+@click.option('--owner', help='Epic owner')
+@click.option('--owner-email', help='Epic owner email')
+@click.option('--labels', '-l', multiple=True, help='Epic labels')
+@click.option('--target-version', help='Target version for this epic')
+@click.option('--target-date', help='Target completion date (YYYY-MM-DD)')
+@click.option('--estimated-points', type=int, help='Estimated story points for epic')
+def create(title, description, priority, owner, owner_email, labels, target_version, target_date, estimated_points):
+    """Create a new epic."""
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    try:
+        from datetime import datetime
+        from .models import Epic
+        
+        # Generate epic ID
+        epic_id = storage.generate_epic_id(title)
+        
+        # Get author info
+        vcs = detect_vcs()
+        if not owner and vcs:
+            owner = vcs.get_user_name()
+        if not owner_email and vcs:
+            owner_email = vcs.get_user_email()
+        
+        # Parse target date
+        target_date_obj = None
+        if target_date:
+            try:
+                target_date_obj = datetime.strptime(target_date, '%Y-%m-%d')
+            except ValueError:
+                click.echo(f"{Fore.RED}Error: Invalid date format. Use YYYY-MM-DD{Style.RESET_ALL}", err=True)
+                sys.exit(1)
+        
+        # Create epic
+        epic = Epic(
+            id=epic_id,
+            title=title,
+            description=description or "",
+            priority=priority,
+            owner=owner or "",
+            owner_email=owner_email or "",
+            labels=list(labels),
+            target_version=target_version or "",
+            target_date=target_date_obj,
+            estimated_story_points=estimated_points
+        )
+        
+        storage.save_epic(epic)
+        
+        click.echo(f"{Fore.GREEN}✓ Created epic {epic.id}{Style.RESET_ALL}")
+        click.echo(f"  Title: {epic.title}")
+        click.echo(f"  Priority: {epic.priority}")
+        click.echo(f"  Owner: {epic.owner}")
+        if epic.target_version:
+            click.echo(f"  Target Version: {epic.target_version}")
+        if epic.target_date:
+            click.echo(f"  Target Date: {epic.target_date.strftime('%Y-%m-%d')}")
+        
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error creating epic: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@epic.command()
+@click.option('--status', type=click.Choice(['draft', 'active', 'completed', 'cancelled']),
+              help='Filter by status')
+@click.option('--format', 'output_format', default='table', type=click.Choice(['table', 'json', 'simple']),
+              help='Output format')
+def list(status, output_format):
+    """List epics."""
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    try:
+        epics = storage.list_epics(status=status)
+        
+        if not epics:
+            click.echo(f"{Fore.YELLOW}No epics found.{Style.RESET_ALL}")
+            return
+        
+        if output_format == 'json':
+            import json
+            data = [epic.to_dict() for epic in epics]
+            click.echo(json.dumps(data, indent=2, default=str))
+        elif output_format == 'simple':
+            for epic in epics:
+                status_color = {
+                    'draft': Fore.YELLOW,
+                    'active': Fore.GREEN, 
+                    'completed': Fore.BLUE,
+                    'cancelled': Fore.RED
+                }.get(epic.status, '')
+                click.echo(f"{epic.id}: {epic.title} ({status_color}{epic.status}{Style.RESET_ALL})")
+        else:
+            # Table format
+            from tabulate import tabulate
+            
+            table_data = []
+            for epic in epics:
+                status_icon = {
+                    'draft': f"{Fore.YELLOW}📝{Style.RESET_ALL}",
+                    'active': f"{Fore.GREEN}🚀{Style.RESET_ALL}",
+                    'completed': f"{Fore.BLUE}✅{Style.RESET_ALL}",
+                    'cancelled': f"{Fore.RED}❌{Style.RESET_ALL}"
+                }.get(epic.status, epic.status)
+                
+                title = epic.title[:40] + "..." if len(epic.title) > 40 else epic.title
+                tickets_count = len(epic.ticket_ids)
+                
+                table_data.append([
+                    epic.id,
+                    title,
+                    status_icon,
+                    epic.priority,
+                    tickets_count,
+                    epic.owner,
+                    epic.target_version or "-",
+                    epic.target_date.strftime('%Y-%m-%d') if epic.target_date else "-"
+                ])
+            
+            headers = ['Epic ID', 'Title', 'Status', 'Priority', 'Tickets', 'Owner', 'Version', 'Target Date']
+            click.echo(tabulate(table_data, headers=headers, tablefmt='grid'))
+            click.echo(f"\n{len(epics)} epics total")
+            
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error listing epics: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@epic.command()
+@click.argument('epic_id')
+def show(epic_id):
+    """Show detailed epic information."""
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    try:
+        epic = storage.load_epic(epic_id.upper())
+        if not epic:
+            click.echo(f"{Fore.RED}Error: Epic {epic_id} not found{Style.RESET_ALL}", err=True)
+            sys.exit(1)
+        
+        # Display epic details
+        click.echo(f"{Fore.CYAN}Epic: {epic.id}{Style.RESET_ALL}")
+        click.echo(f"{Fore.YELLOW}Title: {epic.title}{Style.RESET_ALL}")
+        click.echo("")
+        
+        click.echo(f"Status: {epic.status}")
+        click.echo(f"Priority: {epic.priority}")
+        click.echo(f"Owner: {epic.owner} <{epic.owner_email}>")
+        
+        if epic.labels:
+            click.echo(f"Labels: {', '.join(epic.labels)}")
+        
+        click.echo(f"Created: {epic.created_at.strftime('%Y-%m-%d %H:%M')}")
+        click.echo(f"Updated: {epic.updated_at.strftime('%Y-%m-%d %H:%M')}")
+        click.echo(f"Age: {epic.age_days} days")
+        
+        if epic.target_version:
+            click.echo(f"Target Version: {epic.target_version}")
+        if epic.target_date:
+            click.echo(f"Target Date: {epic.target_date.strftime('%Y-%m-%d')}")
+            if epic.is_overdue:
+                click.echo(f"{Fore.RED}⚠️ OVERDUE{Style.RESET_ALL}")
+        
+        if epic.estimated_story_points:
+            click.echo(f"Estimated Story Points: {epic.estimated_story_points}")
+        
+        click.echo("")
+        
+        # Description
+        if epic.description.strip():
+            click.echo(f"{Fore.GREEN}Description:{Style.RESET_ALL}")
+            click.echo(epic.description)
+            click.echo("")
+        
+        # Goals and success criteria
+        if epic.goals:
+            click.echo(f"{Fore.GREEN}Goals:{Style.RESET_ALL}")
+            for i, goal in enumerate(epic.goals, 1):
+                click.echo(f"  {i}. {goal}")
+            click.echo("")
+        
+        if epic.success_criteria:
+            click.echo(f"{Fore.GREEN}Success Criteria:{Style.RESET_ALL}")
+            for i, criterion in enumerate(epic.success_criteria, 1):
+                click.echo(f"  {i}. {criterion}")
+            click.echo("")
+        
+        # Associated tickets
+        if epic.ticket_ids:
+            click.echo(f"{Fore.GREEN}Tickets ({len(epic.ticket_ids)}):{Style.RESET_ALL}")
+            for ticket_id in epic.ticket_ids:
+                ticket = storage.load_ticket(ticket_id)
+                if ticket:
+                    status_color = {
+                        'open': Fore.WHITE,
+                        'in-progress': Fore.BLUE,
+                        'closed': Fore.GREEN,
+                        'blocked': Fore.RED,
+                        'cancelled': Fore.YELLOW
+                    }.get(ticket.status, Fore.WHITE)
+                    click.echo(f"  • {ticket.id}: {ticket.title} ({status_color}{ticket.status}{Style.RESET_ALL})")
+                else:
+                    click.echo(f"  • {ticket_id}: {Fore.RED}[NOT FOUND]{Style.RESET_ALL}")
+        else:
+            click.echo(f"{Fore.YELLOW}No tickets assigned to this epic.{Style.RESET_ALL}")
+            
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error showing epic: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@epic.command(name='add-ticket')
+@click.argument('epic_id')
+@click.argument('ticket_id')
+def add_ticket(epic_id, ticket_id):
+    """Add a ticket to an epic."""
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    try:
+        success = storage.add_ticket_to_epic(epic_id.upper(), ticket_id.upper())
+        
+        if success:
+            click.echo(f"{Fore.GREEN}✓ Added ticket {ticket_id.upper()} to epic {epic_id.upper()}{Style.RESET_ALL}")
+        else:
+            click.echo(f"{Fore.RED}Error: Could not add ticket to epic. Check that both exist.{Style.RESET_ALL}", err=True)
+            sys.exit(1)
+            
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error adding ticket to epic: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@epic.command(name='remove-ticket')
+@click.argument('epic_id')
+@click.argument('ticket_id')
+def remove_ticket(epic_id, ticket_id):
+    """Remove a ticket from an epic."""
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    try:
+        success = storage.remove_ticket_from_epic(epic_id.upper(), ticket_id.upper())
+        
+        if success:
+            click.echo(f"{Fore.GREEN}✓ Removed ticket {ticket_id.upper()} from epic {epic_id.upper()}{Style.RESET_ALL}")
+        else:
+            click.echo(f"{Fore.RED}Error: Could not remove ticket from epic. Check that both exist.{Style.RESET_ALL}", err=True)
+            sys.exit(1)
+            
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error removing ticket from epic: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@epic.command()
+@click.argument('epic_id')
+@click.option('--title', help='Update epic title')
+@click.option('--description', help='Update epic description')
+@click.option('--status', type=click.Choice(['draft', 'active', 'completed', 'cancelled']),
+              help='Update epic status')
+@click.option('--priority', type=click.Choice(['critical', 'high', 'medium', 'low']),
+              help='Update epic priority')
+@click.option('--owner', help='Update epic owner')
+@click.option('--target-version', help='Update target version')
+@click.option('--target-date', help='Update target date (YYYY-MM-DD)')
+def update(epic_id, title, description, status, priority, owner, target_version, target_date):
+    """Update epic details."""
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    try:
+        epic = storage.load_epic(epic_id.upper())
+        if not epic:
+            click.echo(f"{Fore.RED}Error: Epic {epic_id} not found{Style.RESET_ALL}", err=True)
+            sys.exit(1)
+        
+        # Prepare update data
+        updates = {}
+        if title is not None:
+            updates['title'] = title
+        if description is not None:
+            updates['description'] = description
+        if status is not None:
+            updates['status'] = status
+        if priority is not None:
+            updates['priority'] = priority
+        if owner is not None:
+            updates['owner'] = owner
+        if target_version is not None:
+            updates['target_version'] = target_version
+        if target_date is not None:
+            from datetime import datetime
+            try:
+                updates['target_date'] = datetime.strptime(target_date, '%Y-%m-%d')
+            except ValueError:
+                click.echo(f"{Fore.RED}Error: Invalid date format. Use YYYY-MM-DD{Style.RESET_ALL}", err=True)
+                sys.exit(1)
+        
+        if not updates:
+            click.echo(f"{Fore.YELLOW}No updates provided.{Style.RESET_ALL}")
+            return
+        
+        # Apply updates
+        epic.update(**updates)
+        storage.save_epic(epic)
+        
+        click.echo(f"{Fore.GREEN}✓ Updated epic {epic.id}{Style.RESET_ALL}")
+        for key, value in updates.items():
+            click.echo(f"  {key.replace('_', ' ').title()}: {value}")
+            
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error updating epic: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+# Backlog Management Commands
+
+@main.group()
+def backlog():
+    """📋 Manage product backlog and sprint planning."""
+    pass
+
+
+@backlog.command()
+@click.argument('title')
+@click.option('--description', '-d', help='Item description')
+@click.option('--type', 'item_type', default='story', 
+              type=click.Choice(['story', 'feature', 'bug', 'epic', 'task', 'spike']),
+              help='Item type')
+@click.option('--priority', default='medium', type=click.Choice(['critical', 'high', 'medium', 'low']),
+              help='Item priority')
+@click.option('--story-points', type=int, help='Story points estimate')
+@click.option('--business-value', type=int, help='Business value (1-100)')
+@click.option('--effort-estimate', type=float, help='Effort estimate in hours')
+@click.option('--risk-level', default='low', type=click.Choice(['low', 'medium', 'high']),
+              help='Risk level')
+@click.option('--epic-id', help='Associate with epic')
+@click.option('--component', help='System component')
+@click.option('--theme', help='Business theme')
+@click.option('--labels', '-l', multiple=True, help='Labels')
+def add(title, description, item_type, priority, story_points, business_value, 
+        effort_estimate, risk_level, epic_id, component, theme, labels):
+    """Add an item to the backlog."""
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    try:
+        from .models import BacklogItem
+        
+        # Generate backlog item ID
+        item_id = storage.generate_backlog_item_id(title)
+        
+        # Get author info
+        vcs = detect_vcs()
+        product_owner = vcs.get_user_name() if vcs else ""
+        
+        # Create backlog item
+        item = BacklogItem(
+            id=item_id,
+            title=title,
+            description=description or "",
+            item_type=item_type,
+            priority=priority,
+            story_points=story_points,
+            business_value=business_value,
+            effort_estimate=effort_estimate,
+            risk_level=risk_level,
+            product_owner=product_owner,
+            epic_id=epic_id.upper() if epic_id else None,
+            component=component or "",
+            theme=theme or "",
+            labels=list(labels)
+        )
+        
+        storage.save_backlog_item(item)
+        
+        click.echo(f"{Fore.GREEN}✓ Added backlog item {item.id}{Style.RESET_ALL}")
+        click.echo(f"  Title: {item.title}")
+        click.echo(f"  Type: {item.item_type}")
+        click.echo(f"  Priority: {item.priority}")
+        if item.story_points:
+            click.echo(f"  Story Points: {item.story_points}")
+        if item.business_value:
+            click.echo(f"  Business Value: {item.business_value}")
+        if item.epic_id:
+            click.echo(f"  Epic: {item.epic_id}")
+        
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error adding backlog item: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@backlog.command()
+@click.option('--status', type=click.Choice(['new', 'groomed', 'ready', 'in-progress', 'done', 'cancelled']),
+              help='Filter by status')
+@click.option('--epic', help='Filter by epic ID')
+@click.option('--sprint', help='Filter by sprint ID')
+@click.option('--format', 'output_format', default='table', type=click.Choice(['table', 'json', 'simple']),
+              help='Output format')
+def list(status, epic, sprint, output_format):
+    """List backlog items."""
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    try:
+        items = storage.list_backlog_items(
+            status=status,
+            epic_id=epic.upper() if epic else None,
+            sprint_id=sprint
+        )
+        
+        if not items:
+            click.echo(f"{Fore.YELLOW}No backlog items found.{Style.RESET_ALL}")
+            return
+        
+        if output_format == 'json':
+            import json
+            data = [item.to_dict() for item in items]
+            click.echo(json.dumps(data, indent=2, default=str))
+        elif output_format == 'simple':
+            for item in items:
+                status_color = {
+                    'new': Fore.WHITE,
+                    'groomed': Fore.YELLOW,
+                    'ready': Fore.GREEN,
+                    'in-progress': Fore.BLUE,
+                    'done': Fore.CYAN,
+                    'cancelled': Fore.RED
+                }.get(item.status, '')
+                click.echo(f"{item.id}: {item.title} ({status_color}{item.status}{Style.RESET_ALL})")
+        else:
+            # Table format
+            from tabulate import tabulate
+            
+            table_data = []
+            for item in items:
+                status_icon = {
+                    'new': f"{Fore.WHITE}●{Style.RESET_ALL}",
+                    'groomed': f"{Fore.YELLOW}📝{Style.RESET_ALL}",
+                    'ready': f"{Fore.GREEN}✅{Style.RESET_ALL}",
+                    'in-progress': f"{Fore.BLUE}🔄{Style.RESET_ALL}",
+                    'done': f"{Fore.CYAN}✓{Style.RESET_ALL}",
+                    'cancelled': f"{Fore.RED}❌{Style.RESET_ALL}"
+                }.get(item.status, item.status)
+                
+                title = item.title[:35] + "..." if len(item.title) > 35 else item.title
+                
+                table_data.append([
+                    item.id,
+                    title,
+                    item.item_type,
+                    status_icon,
+                    item.priority,
+                    item.story_points or "-",
+                    item.business_value or "-",
+                    item.epic_id or "-",
+                    item.assigned_to or "-"
+                ])
+            
+            headers = ['Item ID', 'Title', 'Type', 'Status', 'Priority', 'Points', 'Value', 'Epic', 'Assigned']
+            click.echo(tabulate(table_data, headers=headers, tablefmt='grid'))
+            click.echo(f"\n{len(items)} backlog items total")
+            
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error listing backlog items: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
 if __name__ == '__main__':
     main()

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Set
 import yaml
 
-from .models import Ticket, TicketConfig, generate_ticket_id
+from .models import Ticket, TicketConfig, Epic, BacklogItem, generate_ticket_id
 from .vcs import ensure_in_repository
 
 
@@ -65,6 +65,8 @@ class TicketStorage:
         self.tickets_dir.mkdir(exist_ok=True)
         (self.tickets_dir / "open").mkdir(exist_ok=True)
         (self.tickets_dir / "closed").mkdir(exist_ok=True)
+        (self.tickets_dir / "epics").mkdir(exist_ok=True)
+        (self.tickets_dir / "backlog").mkdir(exist_ok=True)
         
         # Create default configuration
         config = TicketConfig()
@@ -334,3 +336,261 @@ class TicketStorage:
                 stats['open'] += 1  # fallback
         
         return stats
+    
+    # Epic Management Methods
+    
+    def save_epic(self, epic: Epic) -> None:
+        """Save an epic to storage."""
+        self._ensure_initialized()
+        
+        epic_path = self.tickets_dir / "epics" / f"{epic.id}.yaml"
+        epic_path.parent.mkdir(exist_ok=True)
+        
+        data = epic.to_dict()
+        with open(epic_path, 'w', encoding='utf-8') as f:
+            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+    
+    def load_epic(self, epic_id: str) -> Optional[Epic]:
+        """Load an epic from storage."""
+        self._ensure_initialized()
+        
+        epic_path = self.tickets_dir / "epics" / f"{epic_id}.yaml"
+        if not epic_path.exists():
+            return None
+        
+        try:
+            with open(epic_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+            return Epic.from_dict(data)
+        except (yaml.YAMLError, TypeError, ValueError) as e:
+            raise ValueError(f"Failed to load epic {epic_id}: {e}")
+    
+    def delete_epic(self, epic_id: str) -> bool:
+        """Delete an epic from storage."""
+        self._ensure_initialized()
+        
+        epic_path = self.tickets_dir / "epics" / f"{epic_id}.yaml"
+        if not epic_path.exists():
+            return False
+        
+        epic_path.unlink()
+        return True
+    
+    def list_epics(self, status: Optional[str] = None) -> List[Epic]:
+        """List epics with optional filtering."""
+        self._ensure_initialized()
+        
+        epics = []
+        epics_dir = self.tickets_dir / "epics"
+        
+        if not epics_dir.exists():
+            return epics
+        
+        for epic_file in epics_dir.glob("*.yaml"):
+            try:
+                with open(epic_file, 'r', encoding='utf-8') as f:
+                    data = yaml.safe_load(f)
+                epic = Epic.from_dict(data)
+                
+                # Apply status filter
+                if status is None or epic.status == status:
+                    epics.append(epic)
+            except Exception:
+                # Skip corrupted files
+                continue
+        
+        return sorted(epics, key=lambda e: e.created_at)
+    
+    def generate_epic_id(self, title: str) -> str:
+        """Generate a unique epic ID based on title."""
+        existing_epics = self.list_epics()
+        existing_ids = {epic.id for epic in existing_epics}
+        
+        # Extract first meaningful word from title
+        import re
+        words = re.findall(r'\w+', title.upper())
+        if words:
+            prefix = words[0][:8]  # Max 8 chars
+        else:
+            prefix = "EPIC"
+        
+        # Find the next available number
+        counter = 1
+        while True:
+            epic_id = f"{prefix}-{counter}"
+            if epic_id not in existing_ids:
+                return epic_id
+            counter += 1
+    
+    def add_ticket_to_epic(self, epic_id: str, ticket_id: str) -> bool:
+        """Add a ticket to an epic."""
+        epic = self.load_epic(epic_id)
+        ticket = self.load_ticket(ticket_id)
+        
+        if not epic or not ticket:
+            return False
+        
+        # Update epic
+        epic.add_ticket(ticket_id)
+        self.save_epic(epic)
+        
+        # Update ticket
+        ticket.assign_to_epic(epic_id)
+        self.save_ticket(ticket)
+        
+        return True
+    
+    def remove_ticket_from_epic(self, epic_id: str, ticket_id: str) -> bool:
+        """Remove a ticket from an epic."""
+        epic = self.load_epic(epic_id)
+        ticket = self.load_ticket(ticket_id)
+        
+        if not epic or not ticket:
+            return False
+        
+        # Update epic
+        epic.remove_ticket(ticket_id)
+        self.save_epic(epic)
+        
+        # Update ticket
+        ticket.remove_from_epic()
+        self.save_ticket(ticket)
+        
+        return True
+    
+    # Backlog Management Methods
+    
+    def save_backlog_item(self, item: BacklogItem) -> None:
+        """Save a backlog item to storage."""
+        self._ensure_initialized()
+        
+        item_path = self.tickets_dir / "backlog" / f"{item.id}.yaml"
+        item_path.parent.mkdir(exist_ok=True)
+        
+        data = item.to_dict()
+        with open(item_path, 'w', encoding='utf-8') as f:
+            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+    
+    def load_backlog_item(self, item_id: str) -> Optional[BacklogItem]:
+        """Load a backlog item from storage."""
+        self._ensure_initialized()
+        
+        item_path = self.tickets_dir / "backlog" / f"{item_id}.yaml"
+        if not item_path.exists():
+            return None
+        
+        try:
+            with open(item_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+            return BacklogItem.from_dict(data)
+        except (yaml.YAMLError, TypeError, ValueError) as e:
+            raise ValueError(f"Failed to load backlog item {item_id}: {e}")
+    
+    def delete_backlog_item(self, item_id: str) -> bool:
+        """Delete a backlog item from storage."""
+        self._ensure_initialized()
+        
+        item_path = self.tickets_dir / "backlog" / f"{item_id}.yaml"
+        if not item_path.exists():
+            return False
+        
+        item_path.unlink()
+        return True
+    
+    def list_backlog_items(self, status: Optional[str] = None, 
+                          epic_id: Optional[str] = None,
+                          sprint_id: Optional[str] = None) -> List[BacklogItem]:
+        """List backlog items with optional filtering."""
+        self._ensure_initialized()
+        
+        items = []
+        backlog_dir = self.tickets_dir / "backlog"
+        
+        if not backlog_dir.exists():
+            return items
+        
+        for item_file in backlog_dir.glob("*.yaml"):
+            try:
+                with open(item_file, 'r', encoding='utf-8') as f:
+                    data = yaml.safe_load(f)
+                item = BacklogItem.from_dict(data)
+                
+                # Apply filters
+                if status is not None and item.status != status:
+                    continue
+                if epic_id is not None and item.epic_id != epic_id:
+                    continue
+                if sprint_id is not None and item.sprint_id != sprint_id:
+                    continue
+                
+                items.append(item)
+            except Exception:
+                # Skip corrupted files
+                continue
+        
+        return sorted(items, key=lambda i: i.priority_score, reverse=True)
+    
+    def generate_backlog_item_id(self, title: str) -> str:
+        """Generate a unique backlog item ID based on title."""
+        existing_items = self.list_backlog_items()
+        existing_ids = {item.id for item in existing_items}
+        
+        # Extract first meaningful word from title
+        import re
+        words = re.findall(r'\w+', title.upper())
+        if words:
+            prefix = words[0][:6]  # Max 6 chars for backlog
+        else:
+            prefix = "BL"
+        
+        # Find the next available number
+        counter = 1
+        while True:
+            item_id = f"{prefix}-{counter}"
+            if item_id not in existing_ids:
+                return item_id
+            counter += 1
+    
+    def convert_backlog_to_ticket(self, item_id: str, reporter: str = "", reporter_email: str = "") -> Optional[Ticket]:
+        """Convert a backlog item to a ticket."""
+        item = self.load_backlog_item(item_id)
+        if not item:
+            return None
+        
+        # Generate ticket ID
+        existing_tickets = self.list_tickets()
+        existing_ids = {ticket.id for ticket in existing_tickets}
+        ticket_id = generate_ticket_id(item.title, existing_ids)
+        
+        # Create ticket from backlog item
+        ticket = Ticket(
+            id=ticket_id,
+            title=item.title,
+            description=item.description,
+            status="open",
+            priority=item.priority,
+            assignee=item.assigned_to if item.assigned_to else None,
+            reporter=reporter or item.product_owner,
+            reporter_email=reporter_email,
+            labels=item.labels.copy(),
+            story_points=item.story_points,
+            epic_id=item.epic_id
+        )
+        
+        # Add acceptance criteria as requirements
+        for criterion in item.acceptance_criteria:
+            ticket.add_requirement(
+                title=f"AC: {criterion[:50]}...",
+                description=criterion,
+                priority=item.priority,
+                author=reporter or item.product_owner
+            )
+        
+        # Save ticket
+        self.save_ticket(ticket)
+        
+        # Update backlog item to reference ticket
+        item.update(ticket_id=ticket_id, status="in-progress")
+        self.save_backlog_item(item)
+        
+        return ticket

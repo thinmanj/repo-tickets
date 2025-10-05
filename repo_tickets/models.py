@@ -322,6 +322,316 @@ class ExpectedResult:
 
 
 @dataclass
+class Epic:
+    """An epic that contains multiple tickets."""
+    id: str
+    title: str
+    description: str = ""
+    status: str = "draft"  # draft, active, completed, cancelled
+    priority: str = "medium"  # critical, high, medium, low
+    owner: str = ""
+    owner_email: str = ""
+    labels: List[str] = field(default_factory=list)
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+    
+    # Epic metadata
+    target_version: str = ""
+    start_date: Optional[datetime] = None
+    target_date: Optional[datetime] = None
+    completed_date: Optional[datetime] = None
+    
+    # Effort tracking
+    estimated_story_points: Optional[int] = None
+    
+    # Tickets in this epic
+    ticket_ids: List[str] = field(default_factory=list)
+    
+    # Requirements and goals
+    goals: List[str] = field(default_factory=list)  # High-level epic goals
+    success_criteria: List[str] = field(default_factory=list)  # Epic success criteria
+    
+    def __post_init__(self):
+        """Validate epic data after initialization."""
+        self._validate()
+    
+    def _validate(self):
+        """Validate epic data."""
+        if not self.title.strip():
+            raise ValueError("Epic title cannot be empty")
+        
+        if not self.id:
+            raise ValueError("Epic ID cannot be empty")
+        
+        # Validate ID format (should be uppercase alphanumeric with dashes)
+        if not re.match(r'^[A-Z0-9-]+$', self.id):
+            raise ValueError(f"Invalid epic ID format: {self.id}")
+        
+        # Validate status
+        valid_statuses = {"draft", "active", "completed", "cancelled"}
+        if self.status not in valid_statuses:
+            raise ValueError(f"Invalid status: {self.status}. Must be one of: {valid_statuses}")
+        
+        # Validate priority
+        valid_priorities = {"critical", "high", "medium", "low"}
+        if self.priority not in valid_priorities:
+            raise ValueError(f"Invalid priority: {self.priority}. Must be one of: {valid_priorities}")
+        
+        # Clean up labels
+        self.labels = list(set(label.strip() for label in self.labels if label.strip()))
+    
+    def add_ticket(self, ticket_id: str) -> None:
+        """Add a ticket to this epic."""
+        if ticket_id not in self.ticket_ids:
+            self.ticket_ids.append(ticket_id)
+            self.updated_at = datetime.now()
+    
+    def remove_ticket(self, ticket_id: str) -> bool:
+        """Remove a ticket from this epic."""
+        if ticket_id in self.ticket_ids:
+            self.ticket_ids.remove(ticket_id)
+            self.updated_at = datetime.now()
+            return True
+        return False
+    
+    def add_goal(self, goal: str) -> None:
+        """Add a goal to this epic."""
+        if goal.strip() and goal not in self.goals:
+            self.goals.append(goal)
+            self.updated_at = datetime.now()
+    
+    def add_success_criterion(self, criterion: str) -> None:
+        """Add a success criterion to this epic."""
+        if criterion.strip() and criterion not in self.success_criteria:
+            self.success_criteria.append(criterion)
+            self.updated_at = datetime.now()
+    
+    def update(self, **kwargs) -> None:
+        """Update epic fields."""
+        allowed_fields = {
+            'title', 'description', 'status', 'priority', 'owner', 'owner_email',
+            'labels', 'target_version', 'start_date', 'target_date', 'estimated_story_points'
+        }
+        
+        for key, value in kwargs.items():
+            if key in allowed_fields:
+                setattr(self, key, value)
+        
+        self.updated_at = datetime.now()
+        self._validate()
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert epic to dictionary for serialization."""
+        data = asdict(self)
+        
+        # Convert datetime objects to ISO strings
+        data['created_at'] = self.created_at.isoformat()
+        data['updated_at'] = self.updated_at.isoformat()
+        
+        if self.start_date:
+            data['start_date'] = self.start_date.isoformat()
+        if self.target_date:
+            data['target_date'] = self.target_date.isoformat()
+        if self.completed_date:
+            data['completed_date'] = self.completed_date.isoformat()
+        
+        return data
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'Epic':
+        """Create epic from dictionary."""
+        # Convert ISO strings back to datetime objects
+        if 'created_at' in data:
+            data['created_at'] = datetime.fromisoformat(data['created_at'])
+        if 'updated_at' in data:
+            data['updated_at'] = datetime.fromisoformat(data['updated_at'])
+        if 'start_date' in data and data['start_date']:
+            data['start_date'] = datetime.fromisoformat(data['start_date'])
+        if 'target_date' in data and data['target_date']:
+            data['target_date'] = datetime.fromisoformat(data['target_date'])
+        if 'completed_date' in data and data['completed_date']:
+            data['completed_date'] = datetime.fromisoformat(data['completed_date'])
+        
+        return cls(**data)
+    
+    @property
+    def age_days(self) -> int:
+        """Get age in days since creation."""
+        return (datetime.now() - self.created_at).days
+    
+    @property
+    def is_overdue(self) -> bool:
+        """Check if epic is overdue based on target date."""
+        return (self.target_date is not None and 
+                datetime.now() > self.target_date and 
+                self.status not in ['completed', 'cancelled'])
+
+
+@dataclass
+class BacklogItem:
+    """A backlog item for prioritization and sprint planning."""
+    id: str
+    title: str
+    description: str = ""
+    item_type: str = "story"  # story, feature, bug, epic, task, spike
+    priority: str = "medium"  # critical, high, medium, low
+    status: str = "new"  # new, groomed, ready, in-progress, done, cancelled
+    
+    # Sprint planning
+    story_points: Optional[int] = None
+    business_value: Optional[int] = None  # 1-100 scale
+    effort_estimate: Optional[float] = None  # hours
+    risk_level: str = "low"  # low, medium, high
+    
+    # Ownership and tracking
+    product_owner: str = ""
+    assigned_to: str = ""
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+    
+    # Relationships
+    epic_id: Optional[str] = None
+    ticket_id: Optional[str] = None  # If converted to ticket
+    dependencies: List[str] = field(default_factory=list)  # Other backlog item IDs
+    
+    # Acceptance criteria and DoD
+    acceptance_criteria: List[str] = field(default_factory=list)
+    definition_of_done: List[str] = field(default_factory=list)
+    
+    # Sprint assignment
+    sprint_id: Optional[str] = None
+    sprint_name: Optional[str] = None
+    
+    # Labels and categorization
+    labels: List[str] = field(default_factory=list)
+    component: str = ""  # System component
+    theme: str = ""  # Business theme
+    
+    def __post_init__(self):
+        """Validate backlog item data after initialization."""
+        self._validate()
+    
+    def _validate(self):
+        """Validate backlog item data."""
+        if not self.title.strip():
+            raise ValueError("Backlog item title cannot be empty")
+        
+        if not self.id:
+            raise ValueError("Backlog item ID cannot be empty")
+        
+        # Validate item type
+        valid_types = {"story", "feature", "bug", "epic", "task", "spike"}
+        if self.item_type not in valid_types:
+            raise ValueError(f"Invalid item type: {self.item_type}. Must be one of: {valid_types}")
+        
+        # Validate priority
+        valid_priorities = {"critical", "high", "medium", "low"}
+        if self.priority not in valid_priorities:
+            raise ValueError(f"Invalid priority: {self.priority}. Must be one of: {valid_priorities}")
+        
+        # Validate status
+        valid_statuses = {"new", "groomed", "ready", "in-progress", "done", "cancelled"}
+        if self.status not in valid_statuses:
+            raise ValueError(f"Invalid status: {self.status}. Must be one of: {valid_statuses}")
+        
+        # Validate risk level
+        valid_risks = {"low", "medium", "high"}
+        if self.risk_level not in valid_risks:
+            raise ValueError(f"Invalid risk level: {self.risk_level}. Must be one of: {valid_risks}")
+        
+        # Validate story points
+        if self.story_points is not None and self.story_points < 0:
+            raise ValueError("Story points cannot be negative")
+        
+        # Validate business value
+        if self.business_value is not None and not 1 <= self.business_value <= 100:
+            raise ValueError("Business value must be between 1 and 100")
+        
+        # Clean up labels
+        self.labels = list(set(label.strip() for label in self.labels if label.strip()))
+    
+    def add_acceptance_criterion(self, criterion: str) -> None:
+        """Add an acceptance criterion."""
+        if criterion.strip() and criterion not in self.acceptance_criteria:
+            self.acceptance_criteria.append(criterion)
+            self.updated_at = datetime.now()
+    
+    def add_dod_item(self, item: str) -> None:
+        """Add a definition of done item."""
+        if item.strip() and item not in self.definition_of_done:
+            self.definition_of_done.append(item)
+            self.updated_at = datetime.now()
+    
+    def assign_to_sprint(self, sprint_id: str, sprint_name: str = "") -> None:
+        """Assign this item to a sprint."""
+        self.sprint_id = sprint_id
+        self.sprint_name = sprint_name or sprint_id
+        self.updated_at = datetime.now()
+    
+    def update(self, **kwargs) -> None:
+        """Update backlog item fields."""
+        allowed_fields = {
+            'title', 'description', 'item_type', 'priority', 'status', 'story_points',
+            'business_value', 'effort_estimate', 'risk_level', 'product_owner', 'assigned_to',
+            'epic_id', 'ticket_id', 'sprint_id', 'sprint_name', 'labels', 'component', 'theme'
+        }
+        
+        for key, value in kwargs.items():
+            if key in allowed_fields:
+                setattr(self, key, value)
+        
+        self.updated_at = datetime.now()
+        self._validate()
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert backlog item to dictionary for serialization."""
+        data = asdict(self)
+        
+        # Convert datetime objects to ISO strings
+        data['created_at'] = self.created_at.isoformat()
+        data['updated_at'] = self.updated_at.isoformat()
+        
+        return data
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'BacklogItem':
+        """Create backlog item from dictionary."""
+        # Convert ISO strings back to datetime objects
+        if 'created_at' in data:
+            data['created_at'] = datetime.fromisoformat(data['created_at'])
+        if 'updated_at' in data:
+            data['updated_at'] = datetime.fromisoformat(data['updated_at'])
+        
+        return cls(**data)
+    
+    @property
+    def age_days(self) -> int:
+        """Get age in days since creation."""
+        return (datetime.now() - self.created_at).days
+    
+    @property
+    def is_ready_for_sprint(self) -> bool:
+        """Check if item is ready for sprint planning."""
+        return (self.status in ['groomed', 'ready'] and
+                self.story_points is not None and
+                len(self.acceptance_criteria) > 0)
+    
+    @property
+    def priority_score(self) -> int:
+        """Calculate priority score for ranking."""
+        priority_values = {'critical': 4, 'high': 3, 'medium': 2, 'low': 1}
+        business_value = self.business_value or 50
+        story_points = self.story_points or 5
+        
+        # Higher business value / lower effort = higher priority
+        base_score = priority_values.get(self.priority, 2) * 100
+        value_score = business_value
+        effort_penalty = story_points * 2
+        
+        return base_score + value_score - effort_penalty
+
+
+@dataclass
 class Comment:
     """A comment on a ticket."""
     id: str
@@ -368,6 +678,11 @@ class Ticket:
     blocked_by: List[str] = field(default_factory=list)  # Ticket IDs
     blocks: List[str] = field(default_factory=list)  # Ticket IDs
     related_to: List[str] = field(default_factory=list)  # Ticket IDs
+    
+    # Epic relationships
+    epic_id: Optional[str] = None  # Epic this ticket belongs to
+    parent_ticket_id: Optional[str] = None  # Parent ticket if this is a sub-ticket
+    child_ticket_ids: List[str] = field(default_factory=list)  # Child/sub-tickets
     
     # AI Agent support
     assigned_agent: Optional[str] = None  # Agent ID
@@ -559,7 +874,8 @@ class Ticket:
             'title', 'description', 'status', 'priority', 'assignee', 
             'labels', 'branch', 'commit', 'estimated_hours', 'story_points',
             'blocked_by', 'blocks', 'related_to', 'assigned_agent', 'agent_tasks',
-            'requirements_status', 'acceptance_criteria_met', 'test_coverage_percentage'
+            'requirements_status', 'acceptance_criteria_met', 'test_coverage_percentage',
+            'epic_id', 'parent_ticket_id', 'child_ticket_ids'
         }
         
         for key, value in kwargs.items():
@@ -874,6 +1190,52 @@ class Ticket:
     def get_gherkin_scenario(self, scenario_id: str) -> Optional[GherkinScenario]:
         """Get a Gherkin scenario by ID."""
         return next((s for s in self.gherkin_scenarios if s.id == scenario_id), None)
+    
+    # Epic and hierarchy management methods
+    
+    def assign_to_epic(self, epic_id: str) -> None:
+        """Assign this ticket to an epic."""
+        self.epic_id = epic_id
+        self.updated_at = datetime.now()
+    
+    def remove_from_epic(self) -> None:
+        """Remove this ticket from its epic."""
+        self.epic_id = None
+        self.updated_at = datetime.now()
+    
+    def add_child_ticket(self, child_ticket_id: str) -> None:
+        """Add a child ticket to this ticket."""
+        if child_ticket_id not in self.child_ticket_ids:
+            self.child_ticket_ids.append(child_ticket_id)
+            self.updated_at = datetime.now()
+    
+    def remove_child_ticket(self, child_ticket_id: str) -> bool:
+        """Remove a child ticket from this ticket."""
+        if child_ticket_id in self.child_ticket_ids:
+            self.child_ticket_ids.remove(child_ticket_id)
+            self.updated_at = datetime.now()
+            return True
+        return False
+    
+    def set_parent_ticket(self, parent_ticket_id: str) -> None:
+        """Set the parent ticket for this ticket."""
+        self.parent_ticket_id = parent_ticket_id
+        self.updated_at = datetime.now()
+    
+    def remove_parent_ticket(self) -> None:
+        """Remove the parent ticket relationship."""
+        self.parent_ticket_id = None
+        self.updated_at = datetime.now()
+    
+    @property
+    def is_epic_ticket(self) -> bool:
+        """Check if this ticket has child tickets (epic-like)."""
+        return len(self.child_ticket_ids) > 0
+    
+    @property
+    def is_sub_ticket(self) -> bool:
+        """Check if this ticket has a parent ticket."""
+        return self.parent_ticket_id is not None
     
     # Requirements analysis properties and methods
     
