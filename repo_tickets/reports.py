@@ -62,6 +62,7 @@ class TicketReportGenerator:
             'progress_metrics': self._get_progress_metrics(tickets),
             'risk_indicators': self._get_risk_indicators(tickets),
             'velocity_metrics': self._get_velocity_metrics(tickets),
+            'requirements_metrics': self._get_requirements_metrics(tickets),
         }
         
         return analytics
@@ -215,6 +216,91 @@ class TicketReportGenerator:
         
         total_time = sum((t.updated_at - t.created_at).days for t in closed_tickets)
         return round(total_time / len(closed_tickets), 1)
+    
+    def _get_requirements_metrics(self, tickets: List[Ticket]) -> Dict[str, Any]:
+        """Calculate requirements and acceptance criteria metrics."""
+        tickets_with_requirements = [t for t in tickets if t.requirements or t.user_stories or t.expected_results or t.gherkin_scenarios]
+        
+        if not tickets_with_requirements:
+            return {
+                'tickets_with_requirements': 0,
+                'total_requirements': 0,
+                'total_user_stories': 0,
+                'total_story_points': 0,
+                'total_expected_results': 0,
+                'total_scenarios': 0,
+                'requirements_coverage': 0.0,
+                'acceptance_rate': 0.0,
+                'test_pass_rate': 0.0,
+                'requirements_status_distribution': {},
+                'scenario_status_distribution': {},
+                'verification_method_distribution': {},
+            }
+        
+        # Basic counts
+        total_requirements = sum(len(t.requirements) for t in tickets)
+        total_user_stories = sum(len(t.user_stories) for t in tickets)
+        total_expected_results = sum(len(t.expected_results) for t in tickets)
+        total_scenarios = sum(len(t.gherkin_scenarios) for t in tickets)
+        total_story_points = sum(t.total_story_points for t in tickets)
+        
+        # Requirements coverage
+        requirements_coverage = 0.0
+        if tickets:
+            covered_requirements = 0
+            total_req_count = 0
+            
+            for ticket in tickets:
+                if ticket.requirements:
+                    total_req_count += len(ticket.requirements)
+                    covered_requirements += len([r for r in ticket.requirements if r.status in ['implemented', 'verified']])
+            
+            if total_req_count > 0:
+                requirements_coverage = (covered_requirements / total_req_count) * 100
+        
+        # Acceptance criteria met rate
+        acceptance_rate = 0.0
+        if tickets_with_requirements:
+            tickets_with_met_criteria = len([t for t in tickets_with_requirements if t.acceptance_criteria_met])
+            acceptance_rate = (tickets_with_met_criteria / len(tickets_with_requirements)) * 100
+        
+        # Test pass rate
+        test_pass_rate = 0.0
+        if total_scenarios > 0:
+            passing_scenarios = 0
+            for ticket in tickets:
+                passing_scenarios += len([s for s in ticket.gherkin_scenarios if s.status == 'passing'])
+            test_pass_rate = (passing_scenarios / total_scenarios) * 100
+        
+        # Status distributions
+        requirements_status_distribution = Counter()
+        scenario_status_distribution = Counter()
+        verification_method_distribution = Counter()
+        
+        for ticket in tickets:
+            for req in ticket.requirements:
+                requirements_status_distribution[req.status] += 1
+            
+            for scenario in ticket.gherkin_scenarios:
+                scenario_status_distribution[scenario.status] += 1
+            
+            for result in ticket.expected_results:
+                verification_method_distribution[result.verification_method] += 1
+        
+        return {
+            'tickets_with_requirements': len(tickets_with_requirements),
+            'total_requirements': total_requirements,
+            'total_user_stories': total_user_stories,
+            'total_story_points': total_story_points,
+            'total_expected_results': total_expected_results,
+            'total_scenarios': total_scenarios,
+            'requirements_coverage': round(requirements_coverage, 1),
+            'acceptance_rate': round(acceptance_rate, 1),
+            'test_pass_rate': round(test_pass_rate, 1),
+            'requirements_status_distribution': dict(requirements_status_distribution),
+            'scenario_status_distribution': dict(scenario_status_distribution),
+            'verification_method_distribution': dict(verification_method_distribution),
+        }
     
     def _generate_html(self, tickets: List[Ticket], stats: Dict[str, int], analytics: Dict[str, Any]) -> str:
         """Generate the complete HTML report."""
@@ -439,10 +525,15 @@ class TicketReportGenerator:
         .badge.status-blocked {{ background: #feb2b2; color: #9b2c2c; }}
         .badge.status-closed {{ background: #bee3f8; color: #2a69ac; }}
         
-        .badge.priority-critical {{ background: #fed7d7; color: #c53030; }}
-        .badge.priority-high {{ background: #feebc8; color: #c05621; }}
-        .badge.priority-medium {{ background: #e6fffa; color: #234e52; }}
-        .badge.priority-low {{ background: #f0fff4; color: #22543d; }}
+        .badge.priority-critical { background: #fed7d7; color: #c53030; }
+        .badge.priority-high { background: #feebc8; color: #c05621; }
+        .badge.priority-medium { background: #e6fffa; color: #234e52; }
+        .badge.priority-low { background: #f0fff4; color: #22543d; }
+        
+        .badge.success { background: #22543d; color: white; }
+        .badge.warning { background: #c05621; color: white; }
+        .badge.danger { background: #c53030; color: white; }
+        .badge.info { background: #2a69ac; color: white; }
         
         .risk-indicator {{
             display: inline-flex;
@@ -537,6 +628,7 @@ class TicketReportGenerator:
             {self._generate_progress_card(analytics)}
             {self._generate_risk_card(analytics)}
             {self._generate_velocity_card(analytics)}
+            {self._generate_requirements_card(analytics)}
         </div>
         
         <div class="dashboard">
@@ -707,6 +799,52 @@ class TicketReportGenerator:
             </div>
         </div>"""
     
+    def _generate_requirements_card(self, analytics: Dict[str, Any]) -> str:
+        """Generate the requirements and acceptance criteria card."""
+        req_metrics = analytics['requirements_metrics']
+        
+        if req_metrics['tickets_with_requirements'] == 0:
+            return f"""
+            <div class="card">
+                <h3>📋 Requirements</h3>
+                <div style="text-align: center; padding: 40px; color: #666;">
+                    <div style="font-size: 3rem; margin-bottom: 10px;">📄</div>
+                    <div>No requirements defined yet</div>
+                    <div style="font-size: 0.9rem; margin-top: 10px;">Use 'tickets requirements add' to get started</div>
+                </div>
+            </div>"""
+        
+        coverage_color = "#22543d" if req_metrics['requirements_coverage'] > 80 else "#c05621" if req_metrics['requirements_coverage'] > 50 else "#c53030"
+        test_color = "#22543d" if req_metrics['test_pass_rate'] > 80 else "#c05621" if req_metrics['test_pass_rate'] > 50 else "#c53030"
+        
+        return f"""
+        <div class="card">
+            <h3>📋 Requirements & Testing</h3>
+            <div class="stat-grid">
+                <div class="stat-item">
+                    <div class="stat-value">{req_metrics['total_requirements']}</div>
+                    <div class="stat-label">Requirements</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{req_metrics['total_user_stories']}</div>
+                    <div class="stat-label">User Stories</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" style="color: {coverage_color};">{req_metrics['requirements_coverage']}%</div>
+                    <div class="stat-label">Coverage</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" style="color: {test_color};">{req_metrics['test_pass_rate']}%</div>
+                    <div class="stat-label">Tests Passing</div>
+                </div>
+            </div>
+            <div style="margin-top: 15px; padding: 10px; background: #f7fafc; border-radius: 8px; font-size: 0.9rem;">
+                🏆 Story Points: {req_metrics['total_story_points']} • 
+                🎯 Tests: {req_metrics['total_scenarios']} • 
+                ✅ Acceptance: {req_metrics['acceptance_rate']}%
+            </div>
+        </div>"""
+    
     def _generate_status_chart_card(self, analytics: Dict[str, Any]) -> str:
         """Generate status distribution chart."""
         return f"""
@@ -782,6 +920,31 @@ class TicketReportGenerator:
             if ticket.age_days > 30 and ticket.is_open:
                 risk_html += '<span class="risk-indicator risk-medium">⏰ Stale</span>'
             
+            # Add requirements indicators
+            req_html = ""
+            if ticket.requirements or ticket.user_stories or ticket.expected_results or ticket.gherkin_scenarios:
+                summary = ticket.get_requirements_summary()
+                
+                # Requirements badge
+                if summary['requirements_count'] > 0:
+                    req_color = "success" if summary['requirements_coverage'] > 80 else "warning" if summary['requirements_coverage'] > 50 else "danger"
+                    req_html += f'<span class="badge {req_color}">📋 {summary["requirements_count"]} req</span>'
+                
+                # User stories badge  
+                if summary['user_stories_count'] > 0:
+                    req_html += f'<span class="badge info">📖 {summary["user_stories_count"]} stories ({summary["total_story_points"]}pts)</span>'
+                
+                # Tests badge
+                if summary['gherkin_scenarios_count'] > 0:
+                    test_color = "success" if summary['test_pass_rate'] > 80 else "warning" if summary['test_pass_rate'] > 50 else "danger"
+                    req_html += f'<span class="badge {test_color}">🧪 {summary["gherkin_scenarios_count"]} tests</span>'
+                
+                # Acceptance criteria status
+                if ticket.acceptance_criteria_met:
+                    req_html += '<span class="badge success">✅ Accepted</span>'
+                elif summary['requirements_count'] > 0 or summary['expected_results_count'] > 0:
+                    req_html += '<span class="badge warning">⏳ Pending</span>'
+            
             ticket_html += f"""
             <div class="ticket-item" data-status="{ticket.status}" data-priority="{ticket.priority}">
                 <div class="ticket-header">
@@ -794,6 +957,7 @@ class TicketReportGenerator:
                     {assignee_html}
                     <span class="badge">📅 {ticket.age_days}d old</span>
                     {labels_html}
+                    {req_html}
                     {risk_html}
                 </div>
             </div>"""

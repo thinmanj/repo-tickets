@@ -18,7 +18,10 @@ import colorama
 from colorama import Fore, Style
 from tabulate import tabulate
 
-from .models import Ticket, Comment, JournalEntry, TimeLog, JournalEntryType
+from .models import (
+    Ticket, Comment, JournalEntry, TimeLog, JournalEntryType,
+    Requirement, UserStory, ExpectedResult, GherkinScenario
+)
 from .storage import TicketStorage
 from .vcs import ensure_in_repository, detect_vcs, VCSError
 from .reports import TicketReportGenerator, open_in_browser
@@ -79,6 +82,109 @@ def format_ticket_short(ticket: Ticket) -> List[str]:
     ]
 
 
+def format_requirements_section(ticket: Ticket) -> str:
+    """Format requirements section for ticket display."""
+    lines = []
+    
+    if (ticket.requirements or ticket.user_stories or 
+        ticket.expected_results or ticket.gherkin_scenarios):
+        
+        lines.append(f"{Fore.GREEN}📋 Requirements & Acceptance Criteria:{Style.RESET_ALL}")
+        
+        # Requirements status overview
+        summary = ticket.get_requirements_summary()
+        lines.append(f"Status: {Fore.BLUE}{ticket.requirements_status}{Style.RESET_ALL} | "
+                    f"Coverage: {summary['requirements_coverage']:.1f}% | "
+                    f"Tests: {summary['test_pass_rate']:.1f}% pass rate")
+        lines.append("")
+        
+        # Requirements
+        if ticket.requirements:
+            lines.append(f"{Fore.YELLOW}Requirements ({len(ticket.requirements)}):{Style.RESET_ALL}")
+            for req in ticket.requirements:
+                status_icon = {
+                    'draft': '📝',
+                    'approved': '✅', 
+                    'implemented': '🔨',
+                    'verified': '✅'
+                }.get(req.status, '❓')
+                
+                priority_color = {
+                    'critical': Fore.RED,
+                    'high': Fore.YELLOW,
+                    'medium': Fore.WHITE,
+                    'low': Fore.CYAN
+                }.get(req.priority, Fore.WHITE)
+                
+                lines.append(f"  {status_icon} #{req.id}: {req.title}")
+                lines.append(f"    Priority: {priority_color}{req.priority}{Style.RESET_ALL} | Status: {req.status}")
+                if req.description:
+                    lines.append(f"    {req.description}")
+                if req.acceptance_criteria:
+                    lines.append(f"    Criteria: {len(req.acceptance_criteria)} items")
+                lines.append("")
+        
+        # User Stories
+        if ticket.user_stories:
+            lines.append(f"{Fore.YELLOW}User Stories ({len(ticket.user_stories)}):{Style.RESET_ALL}")
+            total_points = sum(story.story_points or 0 for story in ticket.user_stories)
+            lines.append(f"  Total Story Points: {total_points}")
+            lines.append("")
+            
+            for story in ticket.user_stories:
+                lines.append(f"  📖 #{story.id}: {story.formatted_story}")
+                points_str = f" ({story.story_points} pts)" if story.story_points else ""
+                lines.append(f"    Priority: {story.priority}{points_str}")
+                if story.acceptance_criteria:
+                    lines.append(f"    Acceptance Criteria: {len(story.acceptance_criteria)} items")
+                lines.append("")
+        
+        # Expected Results
+        if ticket.expected_results:
+            lines.append(f"{Fore.YELLOW}Expected Results ({len(ticket.expected_results)}):{Style.RESET_ALL}")
+            for result in ticket.expected_results:
+                status_icon = {
+                    'pending': '⏳',
+                    'verified': '✅',
+                    'failed': '❌',
+                    'blocked': '🚫'
+                }.get(result.status, '❓')
+                
+                lines.append(f"  {status_icon} #{result.id}: {result.description}")
+                lines.append(f"    Method: {result.verification_method} | Status: {result.status}")
+                if result.verified_at:
+                    lines.append(f"    Verified: {result.verified_at.strftime('%Y-%m-%d')} by {result.verified_by}")
+                if result.success_criteria:
+                    lines.append(f"    Success Criteria: {len(result.success_criteria)} items")
+                lines.append("")
+        
+        # Gherkin Scenarios
+        if ticket.gherkin_scenarios:
+            lines.append(f"{Fore.YELLOW}Acceptance Tests ({len(ticket.gherkin_scenarios)}):{Style.RESET_ALL}")
+            for scenario in ticket.gherkin_scenarios:
+                status_icon = {
+                    'draft': '📝',
+                    'ready': '🔄', 
+                    'passing': '✅',
+                    'failing': '❌',
+                    'blocked': '🚫'
+                }.get(scenario.status, '❓')
+                
+                lines.append(f"  {status_icon} #{scenario.id}: {scenario.title}")
+                lines.append(f"    Status: {scenario.status}")
+                if scenario.tags:
+                    lines.append(f"    Tags: {', '.join(scenario.tags)}")
+                
+                # Show given/when/then counts
+                steps = f"Given: {len(scenario.given)}, When: {len(scenario.when)}, Then: {len(scenario.then)}"
+                lines.append(f"    Steps: {steps}")
+                lines.append("")
+        
+        lines.append("")
+    
+    return "\n".join(lines)
+
+
 def format_ticket_full(ticket: Ticket) -> str:
     """Format a ticket for detailed display."""
     lines = []
@@ -114,6 +220,11 @@ def format_ticket_full(ticket: Ticket) -> str:
         lines.append(f"{Fore.GREEN}Description:{Style.RESET_ALL}")
         lines.append(ticket.description)
         lines.append("")
+    
+    # Requirements section
+    requirements_section = format_requirements_section(ticket)
+    if requirements_section.strip():
+        lines.append(requirements_section)
     
     # Time tracking summary
     if ticket.time_logs or ticket.estimated_hours:
@@ -835,6 +946,31 @@ def status(update_readme, generate_report, days, output_format):
         except ImportError:
             pass
         
+        # Calculate requirements metrics
+        tickets_with_requirements = [t for t in tickets if t.requirements or t.user_stories or t.expected_results or t.gherkin_scenarios]
+        requirements_stats = {
+            'tickets_with_requirements': len(tickets_with_requirements),
+            'total_requirements': sum(len(t.requirements) for t in tickets),
+            'total_user_stories': sum(len(t.user_stories) for t in tickets),
+            'total_story_points': sum(t.total_story_points for t in tickets),
+            'total_scenarios': sum(len(t.gherkin_scenarios) for t in tickets),
+            'total_expected_results': sum(len(t.expected_results) for t in tickets),
+            'tickets_with_acceptance_met': len([t for t in tickets_with_requirements if t.acceptance_criteria_met]),
+        }
+        
+        # Calculate coverage metrics
+        if requirements_stats['total_requirements'] > 0:
+            covered_requirements = sum(len([r for r in t.requirements if r.status in ['implemented', 'verified']]) for t in tickets)
+            requirements_stats['requirements_coverage'] = (covered_requirements / requirements_stats['total_requirements']) * 100
+        else:
+            requirements_stats['requirements_coverage'] = 0.0
+        
+        if requirements_stats['total_scenarios'] > 0:
+            passing_scenarios = sum(len([s for s in t.gherkin_scenarios if s.status == 'passing']) for t in tickets)
+            requirements_stats['test_pass_rate'] = (passing_scenarios / requirements_stats['total_scenarios']) * 100
+        else:
+            requirements_stats['test_pass_rate'] = 0.0
+        
         # Generate summary
         summary_data = {
             'total_tickets': total_tickets,
@@ -845,7 +981,8 @@ def status(update_readme, generate_report, days, output_format):
             'high_priority_open': len(high_priority),
             'recent_closed': len(recent_closed),
             'recent_closed_list': [{'id': t.id, 'title': t.title, 'closed_at': t.updated_at.strftime('%Y-%m-%d')} for t in recent_closed],
-            'agent_stats': agent_stats
+            'agent_stats': agent_stats,
+            'requirements_stats': requirements_stats
         }
         
         # Output based on format
@@ -892,6 +1029,17 @@ def _print_status_summary(data, days):
             click.echo(f"    • {ticket['id']}: {ticket['title'][:50]}{'...' if len(ticket['title']) > 50 else ''} ({ticket['closed_at']})")
         if len(data['recent_closed_list']) > 5:
             click.echo(f"    ... and {len(data['recent_closed_list']) - 5} more")
+    
+    # Requirements and acceptance criteria
+    req_stats = data.get('requirements_stats', {})
+    if req_stats and req_stats.get('tickets_with_requirements', 0) > 0:
+        click.echo(f"\n📋 Requirements & Testing:")
+        click.echo(f"  Requirements: {req_stats['total_requirements']} ({req_stats['requirements_coverage']:.1f}% coverage)")
+        click.echo(f"  User Stories: {req_stats['total_user_stories']} ({req_stats['total_story_points']} story points)")
+        click.echo(f"  Test Scenarios: {req_stats['total_scenarios']} ({req_stats['test_pass_rate']:.1f}% passing)")
+        if req_stats['tickets_with_requirements'] > 0:
+            acceptance_rate = (req_stats['tickets_with_acceptance_met'] / req_stats['tickets_with_requirements']) * 100
+            click.echo(f"  Acceptance Criteria: {req_stats['tickets_with_acceptance_met']}/{req_stats['tickets_with_requirements']} tickets ({acceptance_rate:.1f}% met)")
     
     if data['agent_stats']:
         click.echo(f"\n🤖 AI Agents:")
@@ -959,6 +1107,17 @@ def _update_readme_status(data):
             for ticket in data['recent_closed_list'][:3]:  # Show top 3 in README
                 status_section += f"- ✅ {ticket['id']}: {ticket['title']} ({ticket['closed_at']})\n"
         
+        # Add requirements information
+        req_stats = data.get('requirements_stats', {})
+        if req_stats and req_stats.get('tickets_with_requirements', 0) > 0:
+            status_section += f"\n**📋 Requirements & Testing:**\n"
+            status_section += f"- Requirements: {req_stats['total_requirements']} ({req_stats['requirements_coverage']:.1f}% coverage)\n"
+            status_section += f"- User Stories: {req_stats['total_user_stories']} ({req_stats['total_story_points']} story points)\n"
+            status_section += f"- Test Scenarios: {req_stats['total_scenarios']} ({req_stats['test_pass_rate']:.1f}% passing)\n"
+            if req_stats['tickets_with_requirements'] > 0:
+                acceptance_rate = (req_stats['tickets_with_acceptance_met'] / req_stats['tickets_with_requirements']) * 100
+                status_section += f"- Acceptance Rate: {acceptance_rate:.1f}% ({req_stats['tickets_with_acceptance_met']}/{req_stats['tickets_with_requirements']} tickets)\n"
+        
         if data['agent_stats']:
             status_section += f"\n**🤖 AI Agents:** {data['agent_stats']['active_agents']}/{data['agent_stats']['total_agents']} active, {data['agent_stats']['active_tasks']} active tasks\n"
         
@@ -1009,11 +1168,30 @@ def _generate_status_report(data, all_tickets, days):
 | Recently Closed | {data['recent_closed']} |
 """
         
+        # Add requirements information
+        req_stats = data.get('requirements_stats', {})
+        if req_stats and req_stats.get('tickets_with_requirements', 0) > 0:
+            acceptance_rate = (req_stats['tickets_with_acceptance_met'] / req_stats['tickets_with_requirements']) * 100 if req_stats['tickets_with_requirements'] > 0 else 0
+            report += f"""\n## 📋 Requirements & Testing
+
+| Metric | Count |
+|-----------|-------|
+| Tickets with Requirements | {req_stats['tickets_with_requirements']} |
+| Total Requirements | {req_stats['total_requirements']} |
+| Requirements Coverage | {req_stats['requirements_coverage']:.1f}% |
+| User Stories | {req_stats['total_user_stories']} |
+| Story Points | {req_stats['total_story_points']} |
+| Test Scenarios | {req_stats['total_scenarios']} |
+| Test Pass Rate | {req_stats['test_pass_rate']:.1f}% |
+| Expected Results | {req_stats['total_expected_results']} |
+| Acceptance Rate | {acceptance_rate:.1f}% |
+"""
+        
         if data['agent_stats']:
             report += f"""\n## 🤖 AI Agent Status
 
 | Metric | Count |
-|--------|-------|
+|-----------|-------|
 | Total Agents | {data['agent_stats']['total_agents']} |
 | Active Agents | {data['agent_stats']['active_agents']} |
 | Total Tasks | {data['agent_stats']['total_tasks']} |
@@ -1088,6 +1266,285 @@ def tui():
         click.echo(f"\n{Fore.BLUE}👋 TUI closed by user.{Style.RESET_ALL}")
     except Exception as e:
         click.echo(f"{Fore.RED}❌ Error launching TUI: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+# Requirements Management Commands
+
+@main.group()
+def requirements():
+    """📋 Manage ticket requirements and acceptance criteria."""
+    pass
+
+
+@requirements.command(name='add')
+@click.argument('ticket_id')
+@click.option('--title', '-t', required=True, help='Requirement title')
+@click.option('--description', '-d', default='', help='Requirement description')
+@click.option('--priority', '-p', type=click.Choice(['critical', 'high', 'medium', 'low']), 
+              default='medium', help='Requirement priority')
+@click.option('--criteria', '-c', multiple=True, help='Acceptance criteria (can be used multiple times)')
+def add_requirement(ticket_id, title, description, priority, criteria):
+    """Add a requirement to a ticket."""
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    ticket = storage.load_ticket(ticket_id.upper())
+    if not ticket:
+        click.echo(f"{Fore.RED}Error: Ticket {ticket_id} not found{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    # Get author info
+    vcs = detect_vcs()
+    author = vcs.get_user_name() if vcs else os.getenv('USER', 'unknown')
+    
+    try:
+        requirement = ticket.add_requirement(
+            title=title,
+            description=description,
+            priority=priority,
+            acceptance_criteria=list(criteria),
+            author=author
+        )
+        
+        storage.save_ticket(ticket)
+        
+        click.echo(f"{Fore.GREEN}✓ Added requirement {requirement.id} to ticket {ticket.id}{Style.RESET_ALL}")
+        click.echo(f"  Title: {requirement.title}")
+        click.echo(f"  Priority: {requirement.priority}")
+        if criteria:
+            click.echo(f"  Acceptance Criteria: {len(criteria)} items")
+        
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error adding requirement: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@requirements.command(name='story')
+@click.argument('ticket_id')
+@click.option('--persona', '-p', required=True, help='User persona (As a ...)')
+@click.option('--goal', '-g', required=True, help='User goal (I want ...)')
+@click.option('--benefit', '-b', required=True, help='User benefit (So that ...)')
+@click.option('--priority', type=click.Choice(['critical', 'high', 'medium', 'low']), 
+              default='medium', help='Story priority')
+@click.option('--points', type=int, help='Story points')
+@click.option('--criteria', '-c', multiple=True, help='Acceptance criteria')
+def add_user_story(ticket_id, persona, goal, benefit, priority, points, criteria):
+    """Add a user story to a ticket."""
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    ticket = storage.load_ticket(ticket_id.upper())
+    if not ticket:
+        click.echo(f"{Fore.RED}Error: Ticket {ticket_id} not found{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    # Get author info
+    vcs = detect_vcs()
+    author = vcs.get_user_name() if vcs else os.getenv('USER', 'unknown')
+    
+    try:
+        story = ticket.add_user_story(
+            persona=persona,
+            goal=goal,
+            benefit=benefit,
+            priority=priority,
+            story_points=points,
+            acceptance_criteria=list(criteria),
+            author=author
+        )
+        
+        storage.save_ticket(ticket)
+        
+        click.echo(f"{Fore.GREEN}✓ Added user story {story.id} to ticket {ticket.id}{Style.RESET_ALL}")
+        click.echo(f"  Story: {story.formatted_story}")
+        if points:
+            click.echo(f"  Points: {points}")
+        
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error adding user story: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@requirements.command(name='result')
+@click.argument('ticket_id')
+@click.option('--description', '-d', required=True, help='Expected result description')
+@click.option('--method', '-m', type=click.Choice(['manual', 'automated', 'review']),
+              default='manual', help='Verification method')
+@click.option('--criteria', '-c', multiple=True, help='Success criteria')
+def add_expected_result(ticket_id, description, method, criteria):
+    """Add an expected result to a ticket."""
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    ticket = storage.load_ticket(ticket_id.upper())
+    if not ticket:
+        click.echo(f"{Fore.RED}Error: Ticket {ticket_id} not found{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    try:
+        result = ticket.add_expected_result(
+            description=description,
+            success_criteria=list(criteria),
+            verification_method=method
+        )
+        
+        storage.save_ticket(ticket)
+        
+        click.echo(f"{Fore.GREEN}✓ Added expected result {result.id} to ticket {ticket.id}{Style.RESET_ALL}")
+        click.echo(f"  Description: {result.description}")
+        click.echo(f"  Verification: {result.verification_method}")
+        
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error adding expected result: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@requirements.command(name='gherkin')
+@click.argument('ticket_id')
+@click.option('--title', '-t', required=True, help='Scenario title')
+@click.option('--given', '-g', multiple=True, help='Given steps (can be used multiple times)')
+@click.option('--when', '-w', multiple=True, help='When steps (can be used multiple times)')
+@click.option('--then', multiple=True, help='Then steps (can be used multiple times)')
+@click.option('--background', '-b', help='Background steps')
+@click.option('--tags', multiple=True, help='Scenario tags (without @)')
+@click.option('--file', '-f', type=click.Path(exists=True), help='Load Gherkin from file')
+def add_gherkin_scenario(ticket_id, title, given, when, then, background, tags, file):
+    """Add a Gherkin acceptance test scenario to a ticket."""
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    ticket = storage.load_ticket(ticket_id.upper())
+    if not ticket:
+        click.echo(f"{Fore.RED}Error: Ticket {ticket_id} not found{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    # Get author info
+    vcs = detect_vcs()
+    author = vcs.get_user_name() if vcs else os.getenv('USER', 'unknown')
+    
+    try:
+        if file:
+            # Load from file
+            with open(file, 'r', encoding='utf-8') as f:
+                gherkin_text = f.read()
+            scenario = ticket.add_gherkin_from_text(gherkin_text, author=author)
+        else:
+            # Create from options
+            scenario = ticket.add_gherkin_scenario(
+                title=title,
+                given=list(given),
+                when=list(when),
+                then=list(then),
+                background=background or "",
+                tags=list(tags),
+                author=author
+            )
+        
+        storage.save_ticket(ticket)
+        
+        click.echo(f"{Fore.GREEN}✓ Added Gherkin scenario {scenario.id} to ticket {ticket.id}{Style.RESET_ALL}")
+        click.echo(f"  Title: {scenario.title}")
+        click.echo(f"  Steps: Given({len(scenario.given)}), When({len(scenario.when)}), Then({len(scenario.then)})")
+        if scenario.tags:
+            click.echo(f"  Tags: {', '.join(scenario.tags)}")
+        
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error adding Gherkin scenario: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@requirements.command(name='list')
+@click.argument('ticket_id')
+@click.option('--format', type=click.Choice(['summary', 'detailed', 'gherkin']), 
+              default='summary', help='Output format')
+def list_requirements(ticket_id, format):
+    """List all requirements for a ticket."""
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    ticket = storage.load_ticket(ticket_id.upper())
+    if not ticket:
+        click.echo(f"{Fore.RED}Error: Ticket {ticket_id} not found{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    if format == 'summary':
+        summary = ticket.get_requirements_summary()
+        click.echo(f"{Fore.CYAN}Requirements Summary for {ticket.id}:{Style.RESET_ALL}")
+        click.echo(f"Requirements: {summary['requirements_count']} ({summary['requirements_coverage']:.1f}% coverage)")
+        click.echo(f"User Stories: {summary['user_stories_count']} ({summary['total_story_points']} points)")
+        click.echo(f"Expected Results: {summary['expected_results_count']} ({summary['verification_rate']:.1f}% verified)")
+        click.echo(f"Test Scenarios: {summary['gherkin_scenarios_count']} ({summary['test_pass_rate']:.1f}% passing)")
+        click.echo(f"Status: {ticket.requirements_status} | Acceptance Criteria Met: {'✅' if ticket.acceptance_criteria_met else '❌'}")
+        
+    elif format == 'gherkin':
+        if not ticket.gherkin_scenarios:
+            click.echo(f"{Fore.YELLOW}No Gherkin scenarios found for ticket {ticket.id}{Style.RESET_ALL}")
+            return
+        
+        click.echo(f"{Fore.CYAN}Gherkin Scenarios for {ticket.id}:{Style.RESET_ALL}")
+        for scenario in ticket.gherkin_scenarios:
+            click.echo(f"\n{Fore.GREEN}# Scenario ID: {scenario.id} (Status: {scenario.status}){Style.RESET_ALL}")
+            click.echo(scenario.to_gherkin_text())
+            
+    else:  # detailed
+        click.echo(format_requirements_section(ticket))
+
+
+@requirements.command(name='verify')
+@click.argument('ticket_id')
+@click.argument('result_id')
+@click.option('--notes', '-n', help='Verification notes')
+def verify_result(ticket_id, result_id, notes):
+    """Mark an expected result as verified."""
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    ticket = storage.load_ticket(ticket_id.upper())
+    if not ticket:
+        click.echo(f"{Fore.RED}Error: Ticket {ticket_id} not found{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    result = ticket.get_expected_result(result_id)
+    if not result:
+        click.echo(f"{Fore.RED}Error: Expected result {result_id} not found{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    # Get verifier info
+    vcs = detect_vcs()
+    verifier = vcs.get_user_name() if vcs else os.getenv('USER', 'unknown')
+    
+    try:
+        result.mark_verified(verified_by=verifier, notes=notes or "")
+        ticket.update_acceptance_criteria_status()
+        
+        storage.save_ticket(ticket)
+        
+        click.echo(f"{Fore.GREEN}✓ Marked expected result {result_id} as verified{Style.RESET_ALL}")
+        click.echo(f"  Verified by: {verifier}")
+        if notes:
+            click.echo(f"  Notes: {notes}")
+        
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error verifying result: {e}{Style.RESET_ALL}", err=True)
         sys.exit(1)
 
 

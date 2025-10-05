@@ -8,7 +8,7 @@ Defines the structure and validation for tickets and related objects.
 import re
 import uuid
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any, Set
+from typing import List, Optional, Dict, Any, Set, Union
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from enum import Enum
@@ -101,6 +101,227 @@ class JournalEntry:
 
 
 @dataclass
+class Requirement:
+    """A requirement or user story for a ticket."""
+    id: str
+    title: str
+    description: str = ""
+    priority: str = "medium"  # critical, high, medium, low
+    status: str = "draft"  # draft, approved, implemented, verified
+    acceptance_criteria: List[str] = field(default_factory=list)
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+    author: str = ""
+    
+    def __post_init__(self):
+        """Validate requirement data."""
+        if not self.title.strip():
+            raise ValueError("Requirement title cannot be empty")
+        
+        # Validate priority
+        valid_priorities = {"critical", "high", "medium", "low"}
+        if self.priority not in valid_priorities:
+            raise ValueError(f"Invalid priority: {self.priority}. Must be one of: {valid_priorities}")
+        
+        # Validate status
+        valid_statuses = {"draft", "approved", "implemented", "verified"}
+        if self.status not in valid_statuses:
+            raise ValueError(f"Invalid status: {self.status}. Must be one of: {valid_statuses}")
+
+
+@dataclass
+class UserStory:
+    """A user story with persona, goal, and benefit."""
+    id: str
+    persona: str  # As a [persona]
+    goal: str  # I want [goal]
+    benefit: str  # So that [benefit]
+    priority: str = "medium"
+    story_points: Optional[int] = None
+    acceptance_criteria: List[str] = field(default_factory=list)
+    created_at: datetime = field(default_factory=datetime.now)
+    author: str = ""
+    
+    def __post_init__(self):
+        """Validate user story data."""
+        if not self.persona.strip():
+            raise ValueError("User story persona cannot be empty")
+        if not self.goal.strip():
+            raise ValueError("User story goal cannot be empty")
+        if not self.benefit.strip():
+            raise ValueError("User story benefit cannot be empty")
+    
+    @property
+    def formatted_story(self) -> str:
+        """Get the formatted user story."""
+        return f"As a {self.persona}, I want {self.goal}, so that {self.benefit}."
+
+
+@dataclass
+class GherkinScenario:
+    """A Gherkin-style acceptance test scenario."""
+    id: str
+    title: str
+    background: str = ""  # Background steps (optional)
+    given: List[str] = field(default_factory=list)  # Given steps
+    when: List[str] = field(default_factory=list)  # When steps
+    then: List[str] = field(default_factory=list)  # Then steps
+    tags: List[str] = field(default_factory=list)  # @tags
+    status: str = "draft"  # draft, ready, passing, failing, blocked
+    created_at: datetime = field(default_factory=datetime.now)
+    author: str = ""
+    
+    def __post_init__(self):
+        """Validate Gherkin scenario data."""
+        if not self.title.strip():
+            raise ValueError("Scenario title cannot be empty")
+        
+        if not self.given and not self.when and not self.then:
+            raise ValueError("Scenario must have at least one Given, When, or Then step")
+        
+        # Validate status
+        valid_statuses = {"draft", "ready", "passing", "failing", "blocked"}
+        if self.status not in valid_statuses:
+            raise ValueError(f"Invalid status: {self.status}. Must be one of: {valid_statuses}")
+    
+    def to_gherkin_text(self) -> str:
+        """Convert scenario to Gherkin text format."""
+        lines = []
+        
+        # Add tags if present
+        if self.tags:
+            tag_line = " ".join(f"@{tag}" for tag in self.tags)
+            lines.append(tag_line)
+        
+        # Add scenario title
+        lines.append(f"Scenario: {self.title}")
+        
+        # Add background if present
+        if self.background:
+            lines.append("  Background:")
+            for step in self.background.split('\n'):
+                if step.strip():
+                    lines.append(f"    {step.strip()}")
+        
+        # Add Given steps
+        for i, step in enumerate(self.given):
+            prefix = "  Given" if i == 0 else "  And"
+            lines.append(f"{prefix} {step}")
+        
+        # Add When steps
+        for i, step in enumerate(self.when):
+            prefix = "  When" if i == 0 else "  And"
+            lines.append(f"{prefix} {step}")
+        
+        # Add Then steps
+        for i, step in enumerate(self.then):
+            prefix = "  Then" if i == 0 else "  And"
+            lines.append(f"{prefix} {step}")
+        
+        return "\n".join(lines)
+    
+    @classmethod
+    def from_gherkin_text(cls, text: str, scenario_id: str = None, author: str = "") -> 'GherkinScenario':
+        """Parse Gherkin text into a scenario object."""
+        if scenario_id is None:
+            scenario_id = str(uuid.uuid4())[:8]
+        
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        
+        title = ""
+        background = ""
+        given = []
+        when = []
+        then = []
+        tags = []
+        current_section = None
+        
+        for line in lines:
+            # Parse tags
+            if line.startswith('@'):
+                tags.extend(tag[1:] for tag in line.split() if tag.startswith('@'))
+            
+            # Parse scenario title
+            elif line.startswith('Scenario:'):
+                title = line[9:].strip()
+            
+            # Parse background
+            elif line.startswith('Background:'):
+                current_section = 'background'
+            
+            # Parse Given/When/Then
+            elif line.startswith('Given '):
+                current_section = 'given'
+                given.append(line[6:].strip())
+            elif line.startswith('When '):
+                current_section = 'when'
+                when.append(line[5:].strip())
+            elif line.startswith('Then '):
+                current_section = 'then'
+                then.append(line[5:].strip())
+            elif line.startswith('And '):
+                step = line[4:].strip()
+                if current_section == 'background':
+                    background += f"\n{step}" if background else step
+                elif current_section == 'given':
+                    given.append(step)
+                elif current_section == 'when':
+                    when.append(step)
+                elif current_section == 'then':
+                    then.append(step)
+            elif current_section == 'background' and not line.startswith(('Given', 'When', 'Then', 'And')):
+                background += f"\n{line}" if background else line
+        
+        return cls(
+            id=scenario_id,
+            title=title or "Untitled Scenario",
+            background=background,
+            given=given,
+            when=when,
+            then=then,
+            tags=tags,
+            author=author
+        )
+
+
+@dataclass
+class ExpectedResult:
+    """Expected result or outcome for a ticket."""
+    id: str
+    description: str
+    success_criteria: List[str] = field(default_factory=list)
+    verification_method: str = "manual"  # manual, automated, review
+    status: str = "pending"  # pending, verified, failed, blocked
+    created_at: datetime = field(default_factory=datetime.now)
+    verified_at: Optional[datetime] = None
+    verified_by: str = ""
+    notes: str = ""
+    
+    def __post_init__(self):
+        """Validate expected result data."""
+        if not self.description.strip():
+            raise ValueError("Expected result description cannot be empty")
+        
+        # Validate verification method
+        valid_methods = {"manual", "automated", "review"}
+        if self.verification_method not in valid_methods:
+            raise ValueError(f"Invalid verification method: {self.verification_method}. Must be one of: {valid_methods}")
+        
+        # Validate status
+        valid_statuses = {"pending", "verified", "failed", "blocked"}
+        if self.status not in valid_statuses:
+            raise ValueError(f"Invalid status: {self.status}. Must be one of: {valid_statuses}")
+    
+    def mark_verified(self, verified_by: str, notes: str = "") -> None:
+        """Mark the expected result as verified."""
+        self.status = "verified"
+        self.verified_at = datetime.now()
+        self.verified_by = verified_by
+        if notes:
+            self.notes = notes
+
+
+@dataclass
 class Comment:
     """A comment on a ticket."""
     id: str
@@ -152,6 +373,17 @@ class Ticket:
     assigned_agent: Optional[str] = None  # Agent ID
     agent_tasks: List[str] = field(default_factory=list)  # Task IDs
     
+    # Requirements and Acceptance Testing
+    requirements: List[Requirement] = field(default_factory=list)
+    user_stories: List[UserStory] = field(default_factory=list)
+    expected_results: List[ExpectedResult] = field(default_factory=list)
+    gherkin_scenarios: List[GherkinScenario] = field(default_factory=list)
+    
+    # Requirements metadata
+    requirements_status: str = "draft"  # draft, review, approved, complete
+    acceptance_criteria_met: bool = False
+    test_coverage_percentage: Optional[float] = None
+    
     def __post_init__(self):
         """Validate ticket data after initialization."""
         self._validate()
@@ -177,6 +409,16 @@ class Ticket:
         valid_priorities = {"critical", "high", "medium", "low"}
         if self.priority not in valid_priorities:
             raise ValueError(f"Invalid priority: {self.priority}. Must be one of: {valid_priorities}")
+        
+        # Validate requirements status
+        valid_req_statuses = {"draft", "review", "approved", "complete"}
+        if self.requirements_status not in valid_req_statuses:
+            raise ValueError(f"Invalid requirements status: {self.requirements_status}. Must be one of: {valid_req_statuses}")
+        
+        # Validate test coverage percentage
+        if self.test_coverage_percentage is not None:
+            if not 0 <= self.test_coverage_percentage <= 100:
+                raise ValueError("Test coverage percentage must be between 0 and 100")
         
         # Clean up labels - remove duplicates and empty strings
         self.labels = list(set(label.strip() for label in self.labels if label.strip()))
@@ -316,7 +558,8 @@ class Ticket:
         allowed_fields = {
             'title', 'description', 'status', 'priority', 'assignee', 
             'labels', 'branch', 'commit', 'estimated_hours', 'story_points',
-            'blocked_by', 'blocks', 'related_to', 'assigned_agent', 'agent_tasks'
+            'blocked_by', 'blocks', 'related_to', 'assigned_agent', 'agent_tasks',
+            'requirements_status', 'acceptance_criteria_met', 'test_coverage_percentage'
         }
         
         for key, value in kwargs.items():
@@ -352,6 +595,30 @@ class Ticket:
                 log_data['end_time'] = log_data['end_time'].isoformat()
             if isinstance(log_data['created_at'], datetime):
                 log_data['created_at'] = log_data['created_at'].isoformat()
+        
+        # Convert requirement datetimes
+        for req_data in data.get('requirements', []):
+            if isinstance(req_data['created_at'], datetime):
+                req_data['created_at'] = req_data['created_at'].isoformat()
+            if isinstance(req_data['updated_at'], datetime):
+                req_data['updated_at'] = req_data['updated_at'].isoformat()
+        
+        # Convert user story datetimes
+        for story_data in data.get('user_stories', []):
+            if isinstance(story_data['created_at'], datetime):
+                story_data['created_at'] = story_data['created_at'].isoformat()
+        
+        # Convert expected result datetimes
+        for result_data in data.get('expected_results', []):
+            if isinstance(result_data['created_at'], datetime):
+                result_data['created_at'] = result_data['created_at'].isoformat()
+            if result_data.get('verified_at') and isinstance(result_data['verified_at'], datetime):
+                result_data['verified_at'] = result_data['verified_at'].isoformat()
+        
+        # Convert Gherkin scenario datetimes
+        for scenario_data in data.get('gherkin_scenarios', []):
+            if isinstance(scenario_data['created_at'], datetime):
+                scenario_data['created_at'] = scenario_data['created_at'].isoformat()
         
         return data
     
@@ -391,6 +658,42 @@ class Ticket:
                 log_data['created_at'] = datetime.fromisoformat(log_data['created_at'])
             time_logs.append(TimeLog(**log_data))
         data['time_logs'] = time_logs
+        
+        # Convert requirements
+        requirements = []
+        for req_data in data.get('requirements', []):
+            if isinstance(req_data.get('created_at'), str):
+                req_data['created_at'] = datetime.fromisoformat(req_data['created_at'])
+            if isinstance(req_data.get('updated_at'), str):
+                req_data['updated_at'] = datetime.fromisoformat(req_data['updated_at'])
+            requirements.append(Requirement(**req_data))
+        data['requirements'] = requirements
+        
+        # Convert user stories
+        user_stories = []
+        for story_data in data.get('user_stories', []):
+            if isinstance(story_data.get('created_at'), str):
+                story_data['created_at'] = datetime.fromisoformat(story_data['created_at'])
+            user_stories.append(UserStory(**story_data))
+        data['user_stories'] = user_stories
+        
+        # Convert expected results
+        expected_results = []
+        for result_data in data.get('expected_results', []):
+            if isinstance(result_data.get('created_at'), str):
+                result_data['created_at'] = datetime.fromisoformat(result_data['created_at'])
+            if result_data.get('verified_at') and isinstance(result_data['verified_at'], str):
+                result_data['verified_at'] = datetime.fromisoformat(result_data['verified_at'])
+            expected_results.append(ExpectedResult(**result_data))
+        data['expected_results'] = expected_results
+        
+        # Convert Gherkin scenarios
+        gherkin_scenarios = []
+        for scenario_data in data.get('gherkin_scenarios', []):
+            if isinstance(scenario_data.get('created_at'), str):
+                scenario_data['created_at'] = datetime.fromisoformat(scenario_data['created_at'])
+            gherkin_scenarios.append(GherkinScenario(**scenario_data))
+        data['gherkin_scenarios'] = gherkin_scenarios
         
         return cls(**data)
     
@@ -442,6 +745,241 @@ class Ticket:
     def has_active_agent_tasks(self) -> bool:
         """Check if this ticket has active agent tasks."""
         return len(self.agent_tasks) > 0
+    
+    # Requirement management methods
+    
+    def add_requirement(self, title: str, description: str = "", priority: str = "medium", 
+                       acceptance_criteria: List[str] = None, author: str = "") -> Requirement:
+        """Add a requirement to the ticket."""
+        requirement = Requirement(
+            id=str(uuid.uuid4())[:8],
+            title=title,
+            description=description,
+            priority=priority,
+            acceptance_criteria=acceptance_criteria or [],
+            author=author
+        )
+        self.requirements.append(requirement)
+        self.updated_at = datetime.now()
+        return requirement
+    
+    def remove_requirement(self, requirement_id: str) -> bool:
+        """Remove a requirement by ID."""
+        original_count = len(self.requirements)
+        self.requirements = [r for r in self.requirements if r.id != requirement_id]
+        
+        if len(self.requirements) < original_count:
+            self.updated_at = datetime.now()
+            return True
+        return False
+    
+    def get_requirement(self, requirement_id: str) -> Optional[Requirement]:
+        """Get a requirement by ID."""
+        return next((r for r in self.requirements if r.id == requirement_id), None)
+    
+    def add_user_story(self, persona: str, goal: str, benefit: str, priority: str = "medium",
+                       story_points: Optional[int] = None, acceptance_criteria: List[str] = None,
+                       author: str = "") -> UserStory:
+        """Add a user story to the ticket."""
+        story = UserStory(
+            id=str(uuid.uuid4())[:8],
+            persona=persona,
+            goal=goal,
+            benefit=benefit,
+            priority=priority,
+            story_points=story_points,
+            acceptance_criteria=acceptance_criteria or [],
+            author=author
+        )
+        self.user_stories.append(story)
+        self.updated_at = datetime.now()
+        return story
+    
+    def remove_user_story(self, story_id: str) -> bool:
+        """Remove a user story by ID."""
+        original_count = len(self.user_stories)
+        self.user_stories = [s for s in self.user_stories if s.id != story_id]
+        
+        if len(self.user_stories) < original_count:
+            self.updated_at = datetime.now()
+            return True
+        return False
+    
+    def get_user_story(self, story_id: str) -> Optional[UserStory]:
+        """Get a user story by ID."""
+        return next((s for s in self.user_stories if s.id == story_id), None)
+    
+    def add_expected_result(self, description: str, success_criteria: List[str] = None,
+                           verification_method: str = "manual") -> ExpectedResult:
+        """Add an expected result to the ticket."""
+        result = ExpectedResult(
+            id=str(uuid.uuid4())[:8],
+            description=description,
+            success_criteria=success_criteria or [],
+            verification_method=verification_method
+        )
+        self.expected_results.append(result)
+        self.updated_at = datetime.now()
+        return result
+    
+    def remove_expected_result(self, result_id: str) -> bool:
+        """Remove an expected result by ID."""
+        original_count = len(self.expected_results)
+        self.expected_results = [r for r in self.expected_results if r.id != result_id]
+        
+        if len(self.expected_results) < original_count:
+            self.updated_at = datetime.now()
+            return True
+        return False
+    
+    def get_expected_result(self, result_id: str) -> Optional[ExpectedResult]:
+        """Get an expected result by ID."""
+        return next((r for r in self.expected_results if r.id == result_id), None)
+    
+    def add_gherkin_scenario(self, title: str, given: List[str] = None, when: List[str] = None,
+                            then: List[str] = None, background: str = "", tags: List[str] = None,
+                            author: str = "") -> GherkinScenario:
+        """Add a Gherkin scenario to the ticket."""
+        scenario = GherkinScenario(
+            id=str(uuid.uuid4())[:8],
+            title=title,
+            background=background,
+            given=given or [],
+            when=when or [],
+            then=then or [],
+            tags=tags or [],
+            author=author
+        )
+        self.gherkin_scenarios.append(scenario)
+        self.updated_at = datetime.now()
+        return scenario
+    
+    def add_gherkin_from_text(self, gherkin_text: str, author: str = "") -> GherkinScenario:
+        """Add a Gherkin scenario from text format."""
+        scenario = GherkinScenario.from_gherkin_text(gherkin_text, author=author)
+        self.gherkin_scenarios.append(scenario)
+        self.updated_at = datetime.now()
+        return scenario
+    
+    def remove_gherkin_scenario(self, scenario_id: str) -> bool:
+        """Remove a Gherkin scenario by ID."""
+        original_count = len(self.gherkin_scenarios)
+        self.gherkin_scenarios = [s for s in self.gherkin_scenarios if s.id != scenario_id]
+        
+        if len(self.gherkin_scenarios) < original_count:
+            self.updated_at = datetime.now()
+            return True
+        return False
+    
+    def get_gherkin_scenario(self, scenario_id: str) -> Optional[GherkinScenario]:
+        """Get a Gherkin scenario by ID."""
+        return next((s for s in self.gherkin_scenarios if s.id == scenario_id), None)
+    
+    # Requirements analysis properties and methods
+    
+    @property
+    def requirements_count(self) -> int:
+        """Get total number of requirements."""
+        return len(self.requirements)
+    
+    @property
+    def requirements_coverage(self) -> float:
+        """Get percentage of requirements that are implemented or verified."""
+        if not self.requirements:
+            return 100.0
+        
+        covered = sum(1 for req in self.requirements if req.status in ['implemented', 'verified'])
+        return (covered / len(self.requirements)) * 100
+    
+    @property
+    def user_stories_count(self) -> int:
+        """Get total number of user stories."""
+        return len(self.user_stories)
+    
+    @property
+    def total_story_points(self) -> int:
+        """Get total story points for all user stories."""
+        return sum(story.story_points or 0 for story in self.user_stories)
+    
+    @property
+    def gherkin_scenarios_count(self) -> int:
+        """Get total number of Gherkin scenarios."""
+        return len(self.gherkin_scenarios)
+    
+    @property
+    def passing_scenarios_count(self) -> int:
+        """Get number of passing Gherkin scenarios."""
+        return sum(1 for scenario in self.gherkin_scenarios if scenario.status == 'passing')
+    
+    @property
+    def test_pass_rate(self) -> float:
+        """Get percentage of passing test scenarios."""
+        if not self.gherkin_scenarios:
+            return 0.0
+        
+        return (self.passing_scenarios_count / len(self.gherkin_scenarios)) * 100
+    
+    @property
+    def expected_results_count(self) -> int:
+        """Get total number of expected results."""
+        return len(self.expected_results)
+    
+    @property
+    def verified_results_count(self) -> int:
+        """Get number of verified expected results."""
+        return sum(1 for result in self.expected_results if result.status == 'verified')
+    
+    @property
+    def verification_rate(self) -> float:
+        """Get percentage of verified expected results."""
+        if not self.expected_results:
+            return 100.0
+        
+        return (self.verified_results_count / len(self.expected_results)) * 100
+    
+    def update_acceptance_criteria_status(self) -> None:
+        """Update acceptance criteria met status based on requirements and tests."""
+        # Check if all requirements are verified
+        req_verified = all(req.status == 'verified' for req in self.requirements)
+        
+        # Check if all expected results are verified
+        results_verified = all(result.status == 'verified' for result in self.expected_results)
+        
+        # Check if all scenarios are passing
+        scenarios_passing = all(scenario.status == 'passing' for scenario in self.gherkin_scenarios)
+        
+        # Require at least one of each type if any exist
+        has_requirements = len(self.requirements) > 0
+        has_results = len(self.expected_results) > 0
+        has_scenarios = len(self.gherkin_scenarios) > 0
+        
+        if has_requirements or has_results or has_scenarios:
+            self.acceptance_criteria_met = (
+                (not has_requirements or req_verified) and
+                (not has_results or results_verified) and
+                (not has_scenarios or scenarios_passing)
+            )
+        else:
+            # No acceptance criteria defined
+            self.acceptance_criteria_met = False
+    
+    def get_requirements_summary(self) -> Dict[str, Any]:
+        """Get a summary of all requirements data."""
+        return {
+            'requirements_count': self.requirements_count,
+            'requirements_coverage': self.requirements_coverage,
+            'requirements_status': self.requirements_status,
+            'user_stories_count': self.user_stories_count,
+            'total_story_points': self.total_story_points,
+            'expected_results_count': self.expected_results_count,
+            'verified_results_count': self.verified_results_count,
+            'verification_rate': self.verification_rate,
+            'gherkin_scenarios_count': self.gherkin_scenarios_count,
+            'passing_scenarios_count': self.passing_scenarios_count,
+            'test_pass_rate': self.test_pass_rate,
+            'test_coverage_percentage': self.test_coverage_percentage,
+            'acceptance_criteria_met': self.acceptance_criteria_met
+        }
 
 
 def generate_ticket_id(title: str, existing_ids: Set[str]) -> str:
