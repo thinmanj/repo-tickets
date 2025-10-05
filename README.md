@@ -130,6 +130,52 @@ Repo-tickets stores tickets as YAML files in a `.tickets/` directory in your rep
 - Works offline and doesn't depend on external services
 - Integrates naturally with your existing development workflow
 
+## 🤖 Agent Integration
+
+repo-tickets is designed from the ground up to work seamlessly with AI agents. The system provides comprehensive APIs, documentation, and automation capabilities specifically for autonomous agent interaction.
+
+### Agent-Friendly Features:
+- **JSON-First CLI**: All commands support `--format json` for easy parsing
+- **Predictable Data Structure**: Consistent file layouts and naming conventions
+- **Complete API Coverage**: Programmatic access to all features through CLI and direct file access
+- **Automation Scripts**: Pre-built workflows for common agent tasks
+- **Error Handling**: Robust error responses with detailed context
+- **Bulk Operations**: Efficient batch processing capabilities
+- **State Monitoring**: Built-in health checks and system monitoring
+
+### Quick Agent Setup:
+```bash
+# Agents can check system availability
+tickets --help && tickets list --format json
+
+# Create tickets programmatically
+tickets create --title "Agent Task" --priority high --assignee "ai-agent" --format json
+
+# Monitor system health
+tickets list --status todo --format json | jq length
+
+# Bulk operations
+tickets list --assignee "ai-agent" --format json | jq -r '.[].id' | xargs -I {} tickets update {} --status "in-progress"
+```
+
+### Agent Resources:
+- **[AGENT_GUIDE.md](AGENT_GUIDE.md)** - Comprehensive guide for AI agent integration
+- **[AGENT_API.md](AGENT_API.md)** - Technical API reference and data structures
+- **[examples/](examples/)** - Ready-to-use automation scripts and workflows
+  - `agent_workflow.sh` - Complete autonomous workflow example
+  - `bulk_operations.py` - Python automation library
+  - `monitoring.sh` - Continuous system monitoring
+
+### Agent Workflow Example:
+```bash
+# Autonomous epic creation and management
+epic_id=$(tickets epic create --name "AI Feature" --format json | jq -r '.id')
+tickets create --title "Implement AI" --epic-id "$epic_id" --assignee "agent" --format json
+tickets backlog add --title "AI Testing" --priority-score 90 --format json
+```
+
+Agents can fully manage the entire project lifecycle from epic planning through ticket completion, with complete audit trails and collaboration capabilities.
+
 ## Commands
 
 ### Core Ticket Management
