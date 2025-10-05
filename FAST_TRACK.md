@@ -474,20 +474,24 @@ tickets requirements verify SHOPPING-1 RESULT-456 \
   --notes "A/B test completed: 18% conversion improvement, exceeding 15% target"
 ```
 
-### Step 7.2: Update Test Scenarios Status
+### Step 7.2: Review Test Scenarios Status
 
 ```bash
-# Update Gherkin scenarios as tests pass/fail
-# (This would typically be done programmatically via test automation)
-python -c "
-from repo_tickets.storage import TicketStorage
-storage = TicketStorage()
-ticket = storage.load_ticket('CART-1')
-scenario = ticket.get_gherkin_scenario('SCENARIO-123')
-scenario.status = 'passing'
-storage.save_ticket(ticket)
-print('Updated scenario status to passing')
-"
+# Review current Gherkin scenarios and their status
+tickets requirements list CART-1 --format gherkin
+
+# View detailed requirements including test scenarios
+tickets show CART-1
+
+# Note: Gherkin scenario status updates are currently managed through:
+# 1. CI/CD integration that updates scenario status based on automated test results
+# 2. Manual status tracking in your test automation framework
+# 3. Journal entries to document test progress
+tickets journal CART-1 "All Gherkin scenarios now passing in CI" --type testing
+
+# Document test results in journal for audit trail
+tickets journal CART-1 "Performance scenarios: 95% passing, 2 edge cases still failing" \
+  --type progress --completion 85
 ```
 
 ### Step 7.3: Generate Reports and Close Tickets
@@ -543,18 +547,23 @@ tickets status --generate-report --update-readme
 ```bash
 # Pre-release: Verify all requirements met
 tickets list --status open --priority critical  # Should be empty
-python -c "
-from repo_tickets.storage import TicketStorage
-storage = TicketStorage()
-tickets = storage.list_tickets()
-for t in tickets:
-    if t.status == 'closed':
-        summary = t.get_requirements_summary()
-        print(f'{t.id}: {summary[\"verification_rate\"]}% verified')
-"
 
-# Release notes: Generate from tickets
-tickets search "milestone:v1.0" --format json > release_tickets.json
+# Check overall project health and requirements coverage
+tickets status --format detailed
+
+# Generate comprehensive report for release review
+tickets report  # Creates HTML report with full requirements analysis
+
+# Review all completed tickets for release notes
+tickets list --status closed --format detailed
+
+# Generate release documentation
+tickets status --generate-report  # Creates STATUS.md with metrics
+
+# Export ticket data for release notes (if search command exists)
+# tickets search "milestone:v1.0" --format json > release_tickets.json
+# Otherwise, use:
+tickets list --labels "milestone:v1.0" --format json > release_tickets.json
 ```
 
 ---
@@ -617,22 +626,39 @@ tickets update TICKET-C --related_to TICKET-A  # C and A are related but not dep
 ### 6. Continuous Integration
 
 ```bash
-# Automate scenario status updates in CI/CD
+# Integrate with CI/CD for automated progress tracking
 cat > .github/workflows/update-tickets.yml << 'EOF'
-name: Update Ticket Status
+name: Update Ticket Progress
 on: [push, pull_request]
 jobs:
-  update-scenarios:
+  update-progress:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Run tests and update scenarios
+      - name: Install repo-tickets
+        run: pip install -e .
+      - name: Update ticket progress based on test results
         run: |
           # Run your tests
-          npm test -- --json > test-results.json
-          # Update scenario status based on results
-          python scripts/update_scenarios.py test-results.json
+          npm test -- --json > test-results.json || true
+          
+          # Extract ticket IDs from commit messages or branch names
+          TICKET_ID=$(git log -1 --pretty=%B | grep -o '[A-Z]\+-[0-9]\+' | head -1)
+          
+          if [ ! -z "$TICKET_ID" ]; then
+            # Log CI results in ticket journal
+            if grep -q '"failures": 0' test-results.json; then
+              tickets journal $TICKET_ID "CI: All tests passing" --type testing
+            else
+              tickets journal $TICKET_ID "CI: Some tests failing, check results" --type testing
+            fi
+          fi
 EOF
+
+# Alternative: Manual progress updates after CI runs
+# Check test results and update tickets manually:
+tickets journal CART-1 "CI build #123: All integration tests passing" --type testing
+tickets journal CART-1 "Performance tests: 95% scenarios passing" --type progress
 ```
 
 ---
