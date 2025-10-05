@@ -46,157 +46,195 @@ tickets config
 
 ## Phase 1: Discovery & Requirements
 
-### Step 1.1: Create Epic Ticket for High-Level Feature
+### Step 1.1: Create Epic for High-Level Feature
 
-Start with a high-level feature epic that represents a major piece of functionality.
+Start with a proper epic that represents a major piece of functionality spanning multiple sprints.
 
 **Example: E-commerce Shopping Cart**
 
 ```bash
-# Create the epic ticket
-tickets create "E-commerce Shopping Cart System" \
+# Create the epic with comprehensive metadata
+tickets epic create "E-commerce Shopping Cart System" \
   --description "Implement complete shopping cart functionality allowing users to add, modify, and purchase items" \
   --priority high \
-  --labels "epic,e-commerce,shopping-cart" \
-  --estimate 120
+  --owner "Product Team" \
+  --target-version "v2.0" \
+  --target-date "2024-12-31" \
+  --estimated-points 120 \
+  --labels "e-commerce,shopping-cart,revenue"
 
-# This creates: SHOPPING-1
+# This creates: ECOMMERCE-1
 ```
 
-### Step 1.2: Add Business Requirements
+### Step 1.2: Define Epic Goals and Success Criteria
 
-Define formal business requirements with clear acceptance criteria:
+Add high-level goals and measurable success criteria to the epic:
 
 ```bash
-# Add core business requirement
-tickets requirements add SHOPPING-1 \
-  --title "Shopping Cart Persistence" \
-  --description "Cart contents must persist across user sessions" \
-  --priority critical \
-  --criteria "Cart items saved to database on add/remove" \
-  --criteria "Cart restored when user logs back in" \
-  --criteria "Guest carts persist for 7 days" \
-  --criteria "Registered user carts persist indefinitely"
+# Add epic goals (these define what success looks like)
+tickets epic show ECOMMERCE-1  # View current epic details
 
-# Add performance requirement
-tickets requirements add SHOPPING-1 \
-  --title "Cart Performance" \
-  --description "Cart operations must be fast and responsive" \
-  --priority high \
-  --criteria "Add to cart completes in < 500ms" \
-  --criteria "Cart page loads in < 2 seconds" \
-  --criteria "Checkout process completes in < 10 seconds" \
-  --criteria "Supports concurrent access by 1000+ users"
+# Add epic goals and success criteria through update
+tickets epic update ECOMMERCE-1 \
+  --description "Complete shopping cart functionality with:
 
-# Add integration requirement
-tickets requirements add SHOPPING-1 \
-  --title "Payment Integration" \
-  --description "Integrate with multiple payment providers" \
-  --priority high \
-  --criteria "Stripe payment processing" \
-  --criteria "PayPal payment option" \
-  --criteria "Apple Pay for mobile" \
-  --criteria "Secure tokenization of payment data"
+Goals:
+- Seamless cart persistence across user sessions
+- Sub-500ms cart operations for optimal UX
+- Multi-provider payment integration
+- Mobile-optimized responsive design
+
+Success Criteria:
+- Increase conversion rate by 15%
+- Reduce cart abandonment to < 30%
+- Support 1000+ concurrent users
+- 99.9% payment processing uptime"
 ```
 
-### Step 1.3: Define Expected Business Outcomes
+### Step 1.3: Create Product Backlog Items
+
+Break down the epic into prioritized backlog items:
 
 ```bash
-# Add measurable business results
-tickets requirements result SHOPPING-1 \
-  --description "Increase conversion rate by 15%" \
-  --method automated \
-  --criteria "A/B test shows 15% improvement" \
-  --criteria "Statistical significance > 95%" \
-  --criteria "Minimum 1000 users in test"
-
-tickets requirements result SHOPPING-1 \
-  --description "Reduce cart abandonment to < 30%" \
-  --method automated \
-  --criteria "Analytics show abandonment < 30%" \
-  --criteria "Measured over 30-day period" \
-  --criteria "Excludes known bot traffic"
-```
-
----
-
-## Phase 2: Epic & Feature Planning
-
-### Step 2.1: Break Down into Feature Tickets
-
-Create specific feature tickets for each major component:
-
-```bash
-# Feature 1: Cart Management
-tickets create "Shopping Cart CRUD Operations" \
+# Add high-priority backlog items
+tickets backlog add "Shopping Cart CRUD Operations" \
   --description "Core cart functionality - add, update, remove items" \
+  --type feature \
   --priority high \
-  --labels "feature,cart,crud" \
-  --estimate 24
+  --story-points 8 \
+  --business-value 90 \
+  --effort-estimate 16 \
+  --risk-level medium \
+  --epic-id ECOMMERCE-1 \
+  --component "Cart Management" \
+  --theme "Core Shopping Experience"
 
-# Feature 2: Cart Persistence  
-tickets create "Shopping Cart Session Persistence" \
-  --description "Save and restore cart contents across sessions" \
+tickets backlog add "Cart Session Persistence" \
+  --description "Save and restore cart contents across user sessions" \
+  --type feature \
   --priority high \
-  --labels "feature,cart,persistence" \
-  --estimate 16
+  --story-points 5 \
+  --business-value 85 \
+  --effort-estimate 12 \
+  --risk-level low \
+  --epic-id ECOMMERCE-1 \
+  --component "Data Management" \
+  --theme "User Experience"
 
-# Feature 3: Checkout Process
-tickets create "Shopping Cart Checkout Flow" \
-  --description "Complete checkout process with payment integration" \
-  --priority high \
-  --labels "feature,checkout,payment" \
-  --estimate 32
+tickets backlog add "Payment Integration" \
+  --description "Integrate with Stripe, PayPal, and Apple Pay" \
+  --type feature \
+  --priority critical \
+  --story-points 13 \
+  --business-value 95 \
+  --effort-estimate 24 \
+  --risk-level high \
+  --epic-id ECOMMERCE-1 \
+  --component "Payments" \
+  --theme "Revenue Generation"
 
-# Feature 4: Cart UI/UX
-tickets create "Shopping Cart User Interface" \
-  --description "Responsive cart UI with modern design" \
+tickets backlog add "Mobile Cart Interface" \
+  --description "Responsive cart UI optimized for mobile devices" \
+  --type feature \
   --priority medium \
-  --labels "feature,ui,frontend" \
-  --estimate 20
+  --story-points 8 \
+  --business-value 70 \
+  --effort-estimate 18 \
+  --risk-level low \
+  --epic-id ECOMMERCE-1 \
+  --component "Frontend" \
+  --theme "Mobile Experience"
 ```
 
-### Step 2.2: Establish Dependencies
+### Step 1.4: Review Prioritized Backlog
 
 ```bash
-# Update tickets to show dependencies
-tickets update CART-2 --blocked_by CART-1  # Persistence needs CRUD first
-tickets update CART-3 --blocked_by CART-1,CART-2  # Checkout needs both
-tickets update CART-4 --related_to CART-1,CART-3  # UI works with CRUD and checkout
+# View automatically prioritized backlog
+tickets backlog list --epic ECOMMERCE-1
+
+# Items are automatically sorted by priority score:
+# Score = (Priority × 100) + Business Value - (Story Points × 2)
+# This ensures optimal value/effort balance for sprint planning
 ```
 
 ---
 
-## Phase 3: User Stories & Acceptance Criteria
+## Phase 2: Sprint Planning & Backlog Grooming
 
-### Step 3.1: Define User Stories for Each Feature
+### Step 2.1: Groom Backlog Items for Development
 
-**For CART-1 (CRUD Operations):**
+Prepare high-priority backlog items with detailed acceptance criteria:
 
 ```bash
-# Primary user story
-tickets requirements story CART-1 \
-  --persona "online shopper" \
-  --goal "add products to my cart easily" \
-  --benefit "I can collect items before making a purchase decision" \
-  --priority high \
-  --points 8 \
-  --criteria "Add to cart button visible on product pages" \
-  --criteria "Cart icon updates with item count" \
-  --criteria "Visual confirmation when item added"
+# View top-priority items
+tickets backlog list --status new
 
-# Secondary user story
-tickets requirements story CART-1 \
-  --persona "online shopper" \
-  --goal "modify quantities and remove items from my cart" \
-  --benefit "I can adjust my order before checkout" \
-  --priority high \
-  --points 5 \
-  --criteria "Quantity controls on cart page" \
-  --criteria "Remove item button for each cart item" \
-  --criteria "Total price updates automatically"
+# Groom the highest-priority item by adding acceptance criteria
+# (Note: This is conceptual - full backlog item editing in future CLI update)
+echo "Acceptance Criteria for SHOPPI-1:
+- User can add products to cart from product pages
+- Cart icon shows item count in real-time
+- Visual confirmation appears when items are added
+- Quantity can be updated directly in cart
+- Items can be removed with confirmation
+- Cart totals update automatically" > cart_criteria.md
 
-# Edge case story
+# Update item status to groomed
+tickets backlog update SHOPPI-1 --status groomed
+```
+
+### Step 2.2: Convert Ready Items to Development Tickets
+
+Convert groomed backlog items into full development tickets:
+
+```bash
+# Convert the highest-priority groomed item
+tickets backlog convert SHOPPI-1 \
+  --reporter "Product Manager" \
+  --reporter-email "pm@company.com"
+
+# This automatically:
+# - Creates ticket SHOPPI-1 -> CART-1
+# - Transfers all metadata (priority, story points, epic relationship)
+# - Converts acceptance criteria to formal requirements
+# - Updates backlog item status to "in-progress"
+# - Links backlog item to ticket for traceability
+
+# Convert additional items as sprint capacity allows
+tickets backlog convert CART-1  # Session persistence
+tickets backlog convert PAYMEN-1  # Payment integration (if capacity allows)
+
+# View epic with newly created tickets
+tickets epic show ECOMMERCE-1
+```
+
+---
+
+## Phase 3: Enhanced Requirements & User Stories
+
+### Step 3.1: Review Auto-Generated Requirements
+
+View the requirements automatically created from backlog item conversion:
+
+```bash
+# View requirements created from backlog conversion
+tickets requirements list CART-1
+
+# The backlog conversion automatically created:
+# - Requirements from acceptance criteria
+# - User story placeholders
+# - Expected results framework
+
+# View detailed requirements breakdown
+tickets show CART-1
+```
+
+### Step 3.2: Enhance with Additional User Stories
+
+Add detailed user stories to supplement the auto-generated requirements:
+
+```bash
+# Add edge case user story for mobile users
 tickets requirements story CART-1 \
   --persona "mobile user" \
   --goal "manage my cart on small screens" \
@@ -206,32 +244,39 @@ tickets requirements story CART-1 \
   --criteria "Touch-friendly cart controls" \
   --criteria "Swipe to remove items" \
   --criteria "Responsive design for mobile"
+
+# Add accessibility user story
+tickets requirements story CART-1 \
+  --persona "user with disabilities" \
+  --goal "use cart functionality with assistive technology" \
+  --benefit "I can shop independently" \
+  --priority high \
+  --points 2 \
+  --criteria "Screen reader compatible" \
+  --criteria "Keyboard navigation support" \
+  --criteria "High contrast mode support"
 ```
 
-**For CART-2 (Persistence):**
+### Step 3.3: Add Expected Results for Verification
+
+Define measurable outcomes for the converted tickets:
 
 ```bash
-# Guest user story
-tickets requirements story CART-2 \
-  --persona "guest shopper" \
-  --goal "keep my cart items when I close the browser" \
-  --benefit "I don't lose my selection if I need to continue later" \
-  --priority high \
-  --points 5 \
-  --criteria "Cart saved to localStorage" \
-  --criteria "Cart restored on page reload" \
-  --criteria "Cart persists for 7 days"
+# Add performance expectations
+tickets requirements result CART-1 \
+  --description "Cart operations complete within performance targets" \
+  --method automated \
+  --criteria "Add to cart: < 300ms response time" \
+  --criteria "Cart page load: < 2s" \
+  --criteria "95% success rate under normal load"
 
-# Registered user story
-tickets requirements story CART-2 \
-  --persona "registered user" \
-  --goal "access my cart from any device" \
-  --benefit "I can start shopping on mobile and finish on desktop" \
-  --priority high \
-  --points 8 \
-  --criteria "Cart synced to user account" \
-  --criteria "Cart available across devices" \
-  --criteria "Cart merges when logging in"
+# Add user experience expectations  
+tickets requirements result CART-1 \
+  --description "Users can successfully manage cart items" \
+  --method manual \
+  --criteria "100% of test users can add items" \
+  --criteria "100% of test users can modify quantities" \
+  --criteria "95% find the interface intuitive"
 ```
 
 ---

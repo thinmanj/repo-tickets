@@ -37,6 +37,9 @@ A CLI ticket system that works with git, mercurial, and Jujutsu repositories wit
 - **Performance Metrics**: Effort estimation, story points, and completion tracking
 - **📋 Requirements Management**: Comprehensive requirement tracking, user stories, and acceptance criteria
 - **🧪 BDD Testing**: Gherkin scenario support with Given-When-Then format
+- **🎯 Epic Management**: Large-scale feature planning with epic-level tracking and relationships
+- **📋 Product Backlog**: Advanced backlog management with prioritization scoring and sprint planning
+- **🚀 Sprint Planning**: Backlog grooming, readiness detection, and backlog-to-ticket conversion
 - **Flexible**: Support for custom labels, statuses, and workflows
 
 ## Installation
@@ -104,6 +107,12 @@ tickets agent auto-assign TICKET-2 test "Write unit tests" --priority medium
 tickets agent tasks
 tickets agent show AGENT-CODEBOT
 
+# Epic and backlog management
+tickets epic create "User Management System" --description "Complete user auth and profiles" --priority high --target-version "v1.0"
+tickets backlog add "User Registration" --type feature --priority high --story-points 8 --business-value 90 --epic-id USER-1
+tickets epic add-ticket USER-1 AUTH-1
+tickets epic show USER-1
+
 # Requirements management
 tickets requirements add TICKET-1 --title "User Authentication" --priority high
 tickets requirements story TICKET-1 --persona "user" --goal "log in securely" --benefit "access my account" --points 5
@@ -131,6 +140,21 @@ Repo-tickets stores tickets as YAML files in a `.tickets/` directory in your rep
 - `tickets update ID` - Update ticket properties
 - `tickets close ID` - Close a ticket
 - `tickets search QUERY` - Search tickets
+
+### Epic Management 🎯
+- `tickets epic create TITLE` - Create a new epic with goals and success criteria
+- `tickets epic list` - List all epics with status and progress
+- `tickets epic show EPIC_ID` - Show detailed epic information and associated tickets
+- `tickets epic update EPIC_ID` - Update epic properties, dates, and priorities
+- `tickets epic add-ticket EPIC_ID TICKET_ID` - Add ticket to epic (bidirectional)
+- `tickets epic remove-ticket EPIC_ID TICKET_ID` - Remove ticket from epic
+
+### Product Backlog Management 📋
+- `tickets backlog add TITLE` - Add item to backlog with business value and effort estimates
+- `tickets backlog list` - List backlog items prioritized by scoring algorithm
+- `tickets backlog show ITEM_ID` - Show detailed backlog item with acceptance criteria
+- `tickets backlog update ITEM_ID` - Update backlog item properties and sprint assignment
+- `tickets backlog convert ITEM_ID` - Convert backlog item to full ticket with requirements
 
 ### Requirements Management 📋
 - `tickets requirements add TICKET_ID` - Add formal requirement with acceptance criteria
@@ -391,3 +415,140 @@ tickets requirements verify TICKET-1 RESULT-123 --notes "Performance testing com
 5. **Verify Early and Often** - Update status as work progresses
 
 See [REQUIREMENTS.md](REQUIREMENTS.md) for comprehensive documentation and examples.
+
+## Epic and Backlog Management 🎯📋
+
+Repo-tickets provides enterprise-grade epic planning and product backlog management, enabling professional Agile/Scrum workflows with complete traceability from business goals to development tasks.
+
+### Epic Management
+
+Epics represent large bodies of work that span multiple sprints and tickets. They provide high-level tracking for major features, initiatives, or business goals.
+
+**Epic Lifecycle:** Draft → Active → Completed / Cancelled
+
+```bash
+# Create a comprehensive epic
+tickets epic create "E-commerce Platform" \
+  --description "Complete online shopping experience" \
+  --priority critical \
+  --owner "Product Team" \
+  --target-version "v2.0" \
+  --target-date "2024-12-31" \
+  --estimated-points 200
+
+# Manage epic relationships
+tickets epic add-ticket ECOM-1 CART-1
+tickets epic add-ticket ECOM-1 PAYMENT-1
+tickets epic add-ticket ECOM-1 CHECKOUT-1
+
+# Track epic progress
+tickets epic show ECOM-1
+tickets epic list --status active
+```
+
+**Epic Features:**
+- Target versions and completion dates with overdue detection
+- Goals and measurable success criteria
+- Story point estimation and progress tracking
+- Bidirectional ticket relationships
+- Owner assignment and team coordination
+
+### Product Backlog Management
+
+The backlog system enables professional product management with prioritization scoring, sprint planning, and requirement tracking.
+
+**Backlog Lifecycle:** New → Groomed → Ready → In Progress → Done / Cancelled
+
+```bash
+# Add items with comprehensive metadata
+tickets backlog add "User Registration" \
+  --type feature \
+  --priority high \
+  --story-points 8 \
+  --business-value 90 \
+  --effort-estimate 16 \
+  --risk-level medium \
+  --epic-id USER-1 \
+  --component "Authentication" \
+  --theme "User Onboarding"
+
+# Prioritized listing (automatic scoring)
+tickets backlog list
+
+# Sprint planning filters
+tickets backlog list --status ready
+tickets backlog list --epic USER-1
+tickets backlog list --sprint SPRINT-1
+```
+
+### Advanced Prioritization
+
+Backlog items are automatically prioritized using a sophisticated scoring algorithm:
+
+**Priority Score = (Base Priority × 100) + Business Value - (Story Points × 2)**
+
+This balances:
+- **Strategic Priority** (critical=4, high=3, medium=2, low=1)
+- **Business Value** (1-100 scale of user/business impact)
+- **Development Effort** (story points using Fibonacci scale)
+
+Items are automatically sorted by priority score for optimal sprint planning.
+
+### Sprint Planning Features
+
+```bash
+# Check sprint readiness
+# Items are ready when they have:
+# - Status: groomed or ready
+# - Story points assigned
+# - Acceptance criteria defined
+tickets backlog list --status ready
+
+# Convert ready items to development tickets
+tickets backlog convert LOGIN-1 \
+  --reporter "Product Manager" \
+  --reporter-email "pm@company.com"
+
+# This automatically:
+# - Creates a full ticket with all metadata
+# - Converts acceptance criteria to requirements
+# - Links to the original backlog item
+# - Updates backlog item status to "in-progress"
+```
+
+### Professional Workflows
+
+**Epic Planning Workflow:**
+1. Create epic with business goals and success criteria
+2. Add backlog items and associate with epic
+3. Prioritize and groom backlog items
+4. Convert ready items to tickets for development
+5. Track progress through epic dashboard
+
+**Team Coordination:**
+- **Product Owner**: Manages backlog priorities and business value
+- **Scrum Master**: Reviews sprint readiness and team metrics
+- **Developers**: Convert backlog items and implement features
+- **Team**: Tracks epic progress and release planning
+
+### Integration with Requirements
+
+Epics and backlog items seamlessly integrate with the requirements system:
+
+- **Backlog Items** can have acceptance criteria and definition of done
+- **Epic Goals** become high-level success criteria  
+- **Converted Tickets** automatically inherit requirements from backlog items
+- **Traceability** from epic → backlog item → ticket → requirements
+
+### Analytics and Reporting
+
+Comprehensive metrics for professional project management:
+
+- **Epic Progress**: Story points completed, tickets closed, timeline tracking
+- **Backlog Health**: Items ready for sprint, prioritization distribution
+- **Sprint Metrics**: Velocity, burndown, completion rates
+- **Team Performance**: Individual and team story point delivery
+
+All metrics appear in HTML reports, status commands, and project dashboards.
+
+See [EPICS.md](EPICS.md) for comprehensive documentation, CLI reference, and best practices.
