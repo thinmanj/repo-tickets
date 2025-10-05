@@ -525,15 +525,15 @@ class TicketReportGenerator:
         .badge.status-blocked {{ background: #feb2b2; color: #9b2c2c; }}
         .badge.status-closed {{ background: #bee3f8; color: #2a69ac; }}
         
-        .badge.priority-critical { background: #fed7d7; color: #c53030; }
-        .badge.priority-high { background: #feebc8; color: #c05621; }
-        .badge.priority-medium { background: #e6fffa; color: #234e52; }
-        .badge.priority-low { background: #f0fff4; color: #22543d; }
+        .badge.priority-critical {{ background: #fed7d7; color: #c53030; }}
+        .badge.priority-high {{ background: #feebc8; color: #c05621; }}
+        .badge.priority-medium {{ background: #e6fffa; color: #234e52; }}
+        .badge.priority-low {{ background: #f0fff4; color: #22543d; }}
         
-        .badge.success { background: #22543d; color: white; }
-        .badge.warning { background: #c05621; color: white; }
-        .badge.danger { background: #c53030; color: white; }
-        .badge.info { background: #2a69ac; color: white; }
+        .badge.success {{ background: #22543d; color: white; }}
+        .badge.warning {{ background: #c05621; color: white; }}
+        .badge.danger {{ background: #c53030; color: white; }}
+        .badge.info {{ background: #2a69ac; color: white; }}
         
         .risk-indicator {{
             display: inline-flex;
