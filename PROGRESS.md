@@ -297,6 +297,103 @@ subscribe_event(EventType.TICKET_CREATED, on_critical_ticket)
 
 ---
 
+### Phase 2.3: Structured Logging
+**Status:** ✅ COMPLETE  
+**Completion Date:** 2025-10-30  
+**Commit:** 64dd8eb
+
+**Implementation Details:**
+- Created comprehensive structured logging system
+- Support for JSON and human-readable formats
+- Context-aware logging with ticket_id, agent_id, etc.
+- Performance tracking with context manager
+- CLI commands for log configuration
+
+**Code Changes:**
+- `repo_tickets/logging_utils.py`: New 330-line logging module
+  - `JSONFormatter`: JSON log output with structured fields
+  - `StructuredLogger`: Main logger class with context support
+  - `PerformanceLogger`: Context manager for automatic timing
+  - Global functions: `get_logger()`, `configure_logging()`, `log_performance()`
+  
+- `repo_tickets/cli.py`: Added logging configuration command
+  - `logs` command: Configure level, format, output file
+  
+- `examples/logging_example.py`: Complete usage examples (290 lines)
+  - Basic logging
+  - Context logging
+  - Convenience methods
+  - Performance tracking
+  - Error logging
+  - Agent workflow logging
+  - JSON output
+
+**Features:**
+1. **Structured Output**
+   - JSON format for machine parsing
+   - Human-readable format for development
+   - Consistent field names across logs
+
+2. **Context Fields**
+   - ticket_id, agent_id, epic_id
+   - user, operation, duration_ms
+   - Custom context via kwargs
+
+3. **Convenience Methods**
+   - `log_ticket_operation()` for ticket changes
+   - `log_agent_operation()` for agent tasks
+   - `log_performance()` for timing operations
+   - `log_error_with_ticket()` for error context
+
+4. **Performance Tracking**
+   - Context manager for automatic timing
+   - Sub-millisecond precision
+   - Error handling and logging
+
+**CLI Usage:**
+```bash
+# Configure logging
+tickets logs --level DEBUG --json
+tickets logs --level INFO --human --file /var/log/tickets.log
+
+# Run example
+python examples/logging_example.py
+```
+
+**Example Usage:**
+```python
+from repo_tickets.logging_utils import get_logger, log_performance
+
+logger = get_logger()
+logger.log_ticket_operation("created", "TICKET-1", priority="high")
+
+with log_performance("load_tickets", count=100):
+    tickets = storage.list_tickets()
+```
+
+**JSON Output Example:**
+```json
+{
+  "timestamp": "2025-10-30T15:30:45.123Z",
+  "level": "INFO",
+  "logger": "repo_tickets",
+  "message": "Ticket operation",
+  "ticket_id": "TICKET-1",
+  "operation": "created",
+  "priority": "high"
+}
+```
+
+**Benefits for Agentic Development:**
+- **Machine-Parseable:** JSON logs work with log aggregation tools
+- **Contextual:** Every log has relevant IDs for filtering
+- **Performance:** Track bottlenecks automatically
+- **Debugging:** Error logs include full context
+- **Integration:** Compatible with ELK, Splunk, CloudWatch, etc.
+- **Analytics:** Query logs to understand agent behavior
+
+---
+
 ## 🚧 In Progress
 
 None currently. Phase 1 is 60% complete!
