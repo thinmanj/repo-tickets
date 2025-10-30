@@ -1463,6 +1463,42 @@ def clear_events():
     click.echo(f"{Fore.GREEN}✓ Cleared {count} event(s) from history{Style.RESET_ALL}")
 
 
+@main.command(name='logs')
+@click.option('--level', '-l', default='INFO',
+              type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']),
+              help='Set logging level')
+@click.option('--json/--human', default=False,
+              help='Use JSON format (default: human-readable)')
+@click.option('--file', '-f', type=click.Path(),
+              help='Log to file in addition to console')
+def configure_logs(level, json, file):
+    """Configure structured logging."""
+    from .logging_utils import configure_logging
+    import logging
+    
+    level_map = {
+        'DEBUG': logging.DEBUG,
+        'INFO': logging.INFO,
+        'WARNING': logging.WARNING,
+        'ERROR': logging.ERROR,
+        'CRITICAL': logging.CRITICAL,
+    }
+    
+    log_file = Path(file) if file else None
+    
+    configure_logging(
+        level=level_map[level],
+        log_file=log_file,
+        json_format=json
+    )
+    
+    click.echo(f"{Fore.GREEN}✓ Logging configured{Style.RESET_ALL}")
+    click.echo(f"  Level: {level}")
+    click.echo(f"  Format: {'JSON' if json else 'Human-readable'}")
+    if log_file:
+        click.echo(f"  File: {log_file}")
+
+
 @main.command(name='rebuild-index')
 def rebuild_index():
     """Rebuild the ticket index from scratch."""
@@ -2196,6 +2232,212 @@ def tasks(agent, ticket, status, output_format):
             
     except Exception as e:
         click.echo(f"{Fore.RED}Error listing tasks: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+# Batch Operations Commands
+
+@main.group()
+def batch():
+    """⚡ Perform bulk operations on tickets."""
+    pass
+
+
+@batch.command()
+@click.argument('tickets_file', type=click.Path(exists=True))
+@click.option('--atomic/--no-atomic', default=True, help='Rollback all on any failure')
+@click.option('--format', 'output_format', default='table', type=click.Choice(['table', 'json']),
+              help='Output format')
+def create(tickets_file, atomic, output_format):
+    """Create multiple tickets from JSON file.
+    
+    File format: [{"title": "...", "description": "...", "priority": "...", ...}, ...]
+    """
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    try:
+        from .batch import get_batch_operations
+        import json
+        
+        # Load tickets data
+        with open(tickets_file, 'r') as f:
+            tickets_data = json.load(f)
+        
+        if not isinstance(tickets_data, list):
+            click.echo(f"{Fore.RED}Error: File must contain a JSON array of ticket objects{Style.RESET_ALL}", err=True)
+            sys.exit(1)
+        
+        # Execute batch create
+        batch_ops = get_batch_operations(storage)
+        result = batch_ops.batch_create_tickets(tickets_data, atomic=atomic)
+        
+        # Display results
+        if output_format == 'json':
+            click.echo(json.dumps(result.to_dict(), indent=2))
+        else:
+            if result.success:
+                click.echo(f"{Fore.GREEN}✓ Batch create completed successfully{Style.RESET_ALL}")
+            else:
+                click.echo(f"{Fore.RED}✗ Batch create failed{Style.RESET_ALL}")
+                if result.rolled_back:
+                    click.echo(f"{Fore.YELLOW}  All changes rolled back{Style.RESET_ALL}")
+            
+            click.echo(f"\nExecuted: {result.operations_executed}")
+            click.echo(f"Failed: {result.operations_failed}")
+            click.echo(f"Duration: {result.duration_ms:.1f}ms")
+            
+            if result.created_ids:
+                click.echo(f"\n{Fore.GREEN}Created tickets:{Style.RESET_ALL}")
+                for ticket_id in result.created_ids:
+                    click.echo(f"  • {ticket_id}")
+            
+            if result.errors:
+                click.echo(f"\n{Fore.RED}Errors:{Style.RESET_ALL}")
+                for error in result.errors:
+                    click.echo(f"  • Index {error['index']}: {error['error']}")
+        
+        if not result.success:
+            sys.exit(1)
+            
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@batch.command()
+@click.argument('updates_file', type=click.Path(exists=True))
+@click.option('--atomic/--no-atomic', default=True, help='Rollback all on any failure')
+@click.option('--format', 'output_format', default='table', type=click.Choice(['table', 'json']),
+              help='Output format')
+def update(updates_file, atomic, output_format):
+    """Update multiple tickets from JSON file.
+    
+    File format: {"TICKET-1": {"status": "...", "priority": "..."}, "TICKET-2": {...}, ...}
+    """
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    try:
+        from .batch import get_batch_operations
+        import json
+        
+        # Load updates data
+        with open(updates_file, 'r') as f:
+            updates = json.load(f)
+        
+        if not isinstance(updates, dict):
+            click.echo(f"{Fore.RED}Error: File must contain a JSON object mapping ticket IDs to updates{Style.RESET_ALL}", err=True)
+            sys.exit(1)
+        
+        # Execute batch update
+        batch_ops = get_batch_operations(storage)
+        result = batch_ops.batch_update(updates, atomic=atomic)
+        
+        # Display results
+        if output_format == 'json':
+            click.echo(json.dumps(result.to_dict(), indent=2))
+        else:
+            if result.success:
+                click.echo(f"{Fore.GREEN}✓ Batch update completed successfully{Style.RESET_ALL}")
+            else:
+                click.echo(f"{Fore.RED}✗ Batch update failed{Style.RESET_ALL}")
+                if result.rolled_back:
+                    click.echo(f"{Fore.YELLOW}  All changes rolled back{Style.RESET_ALL}")
+            
+            click.echo(f"\nExecuted: {result.operations_executed}")
+            click.echo(f"Failed: {result.operations_failed}")
+            click.echo(f"Duration: {result.duration_ms:.1f}ms")
+            
+            if result.updated_ids:
+                click.echo(f"\n{Fore.GREEN}Updated tickets:{Style.RESET_ALL}")
+                for ticket_id in result.updated_ids:
+                    click.echo(f"  • {ticket_id}")
+            
+            if result.errors:
+                click.echo(f"\n{Fore.RED}Errors:{Style.RESET_ALL}")
+                for error in result.errors:
+                    click.echo(f"  • {error['ticket_id']}: {error['error']}")
+        
+        if not result.success:
+            sys.exit(1)
+            
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@batch.command()
+@click.argument('ticket_ids', nargs=-1, required=True)
+@click.option('--atomic/--no-atomic', default=True, help='Rollback all on any failure')
+@click.option('--format', 'output_format', default='table', type=click.Choice(['table', 'json']),
+              help='Output format')
+@click.option('--confirm/--no-confirm', default=True, help='Confirm before deleting')
+def delete(ticket_ids, atomic, output_format, confirm):
+    """Delete multiple tickets.
+    
+    Example: tickets batch delete TICKET-1 TICKET-2 TICKET-3
+    """
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    # Confirmation
+    if confirm:
+        click.echo(f"{Fore.YELLOW}About to delete {len(ticket_ids)} tickets:{Style.RESET_ALL}")
+        for tid in ticket_ids:
+            click.echo(f"  • {tid}")
+        
+        if not click.confirm(f"\nAre you sure?"):
+            click.echo("Cancelled.")
+            return
+    
+    try:
+        from .batch import get_batch_operations
+        import json
+        
+        # Execute batch delete
+        batch_ops = get_batch_operations(storage)
+        result = batch_ops.batch_delete(list(ticket_ids), atomic=atomic)
+        
+        # Display results
+        if output_format == 'json':
+            click.echo(json.dumps(result.to_dict(), indent=2))
+        else:
+            if result.success:
+                click.echo(f"{Fore.GREEN}✓ Batch delete completed successfully{Style.RESET_ALL}")
+            else:
+                click.echo(f"{Fore.RED}✗ Batch delete failed{Style.RESET_ALL}")
+                if result.rolled_back:
+                    click.echo(f"{Fore.YELLOW}  All changes rolled back{Style.RESET_ALL}")
+            
+            click.echo(f"\nExecuted: {result.operations_executed}")
+            click.echo(f"Failed: {result.operations_failed}")
+            click.echo(f"Duration: {result.duration_ms:.1f}ms")
+            
+            if result.deleted_ids:
+                click.echo(f"\n{Fore.GREEN}Deleted tickets:{Style.RESET_ALL}")
+                for ticket_id in result.deleted_ids:
+                    click.echo(f"  • {ticket_id}")
+            
+            if result.errors:
+                click.echo(f"\n{Fore.RED}Errors:{Style.RESET_ALL}")
+                for error in result.errors:
+                    click.echo(f"  • {error['ticket_id']}: {error['error']}")
+        
+        if not result.success:
+            sys.exit(1)
+            
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error: {e}{Style.RESET_ALL}", err=True)
         sys.exit(1)
 
 
