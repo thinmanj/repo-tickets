@@ -547,15 +547,38 @@ def close(ticket_id):
 
 @main.command()
 @click.argument('query')
-def search(query):
-    """Search tickets by text query."""
+@click.option('--fast', is_flag=True, help='Use fast index-based search (returns IDs only)')
+@click.option('--format', 'output_format', default='table',
+              type=click.Choice(['table', 'simple', 'json']), help='Output format')
+def search(query, fast, output_format):
+    """Search tickets."""
     storage = get_storage()
     
     if not storage.is_initialized():
         click.echo(f"{Fore.RED}Error: Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
         sys.exit(1)
     
-    tickets = storage.search_tickets(query)
+    if fast:
+        # Fast index-based search
+        ticket_ids = storage.search_tickets_fast(query)
+        
+        if output_format == 'json':
+            click.echo(json.dumps(ticket_ids, indent=2))
+            return
+        
+        if not ticket_ids:
+            click.echo(f"{Fore.YELLOW}No tickets found matching '{query}'{Style.RESET_ALL}")
+            return
+        
+        click.echo(f"{Fore.GREEN}Found {len(ticket_ids)} ticket(s) matching '{query}':{Style.RESET_ALL}")
+        for ticket_id in ticket_ids:
+            click.echo(f"  {ticket_id}")
+        
+        click.echo(f"\n{Fore.CYAN}💡 Use 'tickets show <ID>' to view details{Style.RESET_ALL}")
+        return
+    
+    # Regular full search
+    matching_tickets = storage.search_tickets(query)
     
     if not tickets:
         click.echo(f"No tickets found matching '{query}'.")
@@ -1240,6 +1263,116 @@ def _generate_status_report(data, all_tickets, days):
         
     except Exception as e:
         click.echo(f"{Fore.RED}Error generating status report: {e}{Style.RESET_ALL}", err=True)
+
+
+@main.command(name='list-summary')
+@click.option('--status', '-s', help='Filter by status')
+@click.option('--priority', '-p', help='Filter by priority')
+@click.option('--labels', '-l', help='Filter by labels (comma-separated)')
+@click.option('--format', 'output_format', default='table',
+              type=click.Choice(['table', 'json']), help='Output format')
+def list_summary(status, priority, labels, output_format):
+    """Fast list of ticket summaries using index (no full ticket loading)."""
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}❌ Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    # Parse labels
+    label_list = None
+    if labels:
+        label_list = [label.strip() for label in labels.split(',') if label.strip()]
+    
+    try:
+        summaries = storage.list_tickets_summary(status=status, priority=priority, labels=label_list)
+        
+        if output_format == 'json':
+            click.echo(json.dumps(summaries, indent=2))
+            return
+        
+        if not summaries:
+            click.echo(f"{Fore.YELLOW}No tickets found.{Style.RESET_ALL}")
+            return
+        
+        # Display as table
+        click.echo(f"{Fore.CYAN}Found {len(summaries)} ticket(s){Style.RESET_ALL}\n")
+        
+        # Prepare table data
+        table_data = []
+        for summary in summaries:
+            # Color status
+            status_colors = {
+                'open': Fore.GREEN,
+                'in-progress': Fore.YELLOW,
+                'blocked': Fore.RED,
+                'closed': Fore.BLUE,
+                'cancelled': Fore.MAGENTA,
+            }
+            status_color = status_colors.get(summary['status'], Fore.WHITE)
+            colored_status = f"{status_color}{summary['status']}{Style.RESET_ALL}"
+            
+            # Color priority
+            priority_colors = {
+                'critical': Fore.RED,
+                'high': Fore.YELLOW,
+                'medium': Fore.WHITE,
+                'low': Fore.CYAN,
+            }
+            priority_color = priority_colors.get(summary['priority'], Fore.WHITE)
+            colored_priority = f"{priority_color}{summary['priority']}{Style.RESET_ALL}"
+            
+            # Truncate title
+            title = summary['title'][:50] + "..." if len(summary['title']) > 50 else summary['title']
+            
+            # Format labels
+            labels_str = ", ".join(summary['labels'][:3]) if summary['labels'] else ""
+            if len(summary['labels']) > 3:
+                labels_str += "..."
+            
+            table_data.append([
+                f"{Fore.CYAN}{summary['id']}{Style.RESET_ALL}",
+                title,
+                colored_status,
+                colored_priority,
+                labels_str,
+            ])
+        
+        from tabulate import tabulate
+        headers = ["ID", "Title", "Status", "Priority", "Labels"]
+        click.echo(tabulate(table_data, headers=headers, tablefmt="simple"))
+        
+        click.echo(f"\n{Fore.CYAN}💡 This is a fast summary. Use 'tickets show <ID>' for full details.{Style.RESET_ALL}")
+        
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error listing tickets: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
+@main.command(name='rebuild-index')
+def rebuild_index():
+    """Rebuild the ticket index from scratch."""
+    storage = get_storage()
+    
+    if not storage.is_initialized():
+        click.echo(f"{Fore.RED}❌ Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+    
+    try:
+        click.echo(f"{Fore.CYAN}🔄 Rebuilding ticket index...{Style.RESET_ALL}")
+        
+        count = storage.rebuild_index()
+        
+        click.echo(f"{Fore.GREEN}✓ Index rebuilt successfully{Style.RESET_ALL}")
+        click.echo(f"  Indexed {count} ticket(s)")
+        
+        # Clear cache after rebuild
+        storage.clear_cache()
+        click.echo(f"  Cache cleared")
+        
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error rebuilding index: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
 
 
 @main.command(name='cache-stats')

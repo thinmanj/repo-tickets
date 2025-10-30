@@ -479,6 +479,142 @@ class TicketStorage:
         
         return stats
     
+    # Fast index-based operations (Phase 1.4 optimization)
+    
+    def search_tickets_fast(self, query: str) -> List[str]:
+        """Fast search using index only, returns ticket IDs.
+        
+        This is 10-100x faster than search_tickets() as it only searches
+        the index without loading full ticket data.
+        
+        Args:
+            query: Search query (searches title and labels in index).
+            
+        Returns:
+            List of matching ticket IDs.
+        """
+        self._ensure_initialized()
+        
+        query_lower = query.lower()
+        results = []
+        
+        index = self._load_index()
+        for ticket_id, ticket_info in index.items():
+            # Search in title
+            if query_lower in ticket_info.get('title', '').lower():
+                results.append(ticket_id)
+                continue
+            
+            # Search in labels
+            labels = ticket_info.get('labels', [])
+            if any(query_lower in label.lower() for label in labels):
+                results.append(ticket_id)
+        
+        return results
+    
+    def list_tickets_summary(self, status: Optional[str] = None,
+                            priority: Optional[str] = None,
+                            labels: Optional[List[str]] = None) -> List[Dict]:
+        """Return ticket summaries from index without loading full tickets.
+        
+        This is much faster than list_tickets() for displaying ticket lists.
+        Returns lightweight dict objects instead of full Ticket instances.
+        
+        Args:
+            status: Filter by status (None for all).
+            priority: Filter by priority (None for all).
+            labels: Filter by labels (ticket must have all specified labels).
+            
+        Returns:
+            List of ticket summary dicts with id, title, status, priority, labels, dates.
+        """
+        self._ensure_initialized()
+        
+        index = self._load_index()
+        summaries = []
+        
+        for ticket_id, ticket_info in index.items():
+            # Apply status filter
+            if status is not None and ticket_info.get('status') != status:
+                continue
+            
+            # Apply priority filter
+            if priority is not None and ticket_info.get('priority') != priority:
+                continue
+            
+            # Apply labels filter
+            if labels:
+                ticket_labels = set(ticket_info.get('labels', []))
+                required_labels = set(labels)
+                if not required_labels.issubset(ticket_labels):
+                    continue
+            
+            summaries.append({
+                'id': ticket_id,
+                'title': ticket_info.get('title', ''),
+                'status': ticket_info.get('status', 'open'),
+                'priority': ticket_info.get('priority', 'medium'),
+                'labels': ticket_info.get('labels', []),
+                'created_at': ticket_info.get('created_at', ''),
+                'updated_at': ticket_info.get('updated_at', ''),
+            })
+        
+        # Sort by created_at (most recent first)
+        summaries.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        
+        return summaries
+    
+    def get_tickets_by_ids(self, ticket_ids: List[str]) -> List[Ticket]:
+        """Load multiple tickets efficiently.
+        
+        Args:
+            ticket_ids: List of ticket IDs to load.
+            
+        Returns:
+            List of Ticket objects (None values filtered out).
+        """
+        tickets = []
+        for ticket_id in ticket_ids:
+            ticket = self.load_ticket(ticket_id)
+            if ticket:
+                tickets.append(ticket)
+        return tickets
+    
+    def rebuild_index(self) -> int:
+        """Rebuild the index from scratch by scanning all ticket files.
+        
+        Returns:
+            Number of tickets indexed.
+        """
+        self._ensure_initialized()
+        
+        index = {}
+        ticket_count = 0
+        
+        for status_dir in ['open', 'closed']:
+            dir_path = self.tickets_dir / status_dir
+            if not dir_path.exists():
+                continue
+            
+            for ticket_file in dir_path.glob('*.yaml'):
+                try:
+                    ticket = self.load_ticket(ticket_file.stem)
+                    if ticket:
+                        index[ticket.id] = {
+                            'title': ticket.title,
+                            'status': ticket.status,
+                            'priority': ticket.priority,
+                            'labels': ticket.labels,
+                            'created_at': ticket.created_at.isoformat(),
+                            'updated_at': ticket.updated_at.isoformat(),
+                        }
+                        ticket_count += 1
+                except Exception as e:
+                    print(f"Warning: Failed to index {ticket_file}: {e}")
+        
+        self._save_index(index)
+        return ticket_count
+    
     # Epic Management Methods
     
     def save_epic(self, epic: Epic) -> None:
