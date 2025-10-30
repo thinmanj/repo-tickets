@@ -7,8 +7,10 @@ Handles reading and writing tickets to/from the filesystem.
 
 import os
 import shutil
+import time
 from pathlib import Path
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional, Set, Tuple
+from threading import RLock
 import yaml
 
 from .models import Ticket, TicketConfig, Epic, BacklogItem, generate_ticket_id
@@ -21,13 +23,15 @@ class TicketStorage:
     TICKETS_DIR = ".tickets"
     CONFIG_FILE = "config.yaml"
     INDEX_FILE = "index.yaml"
+    CACHE_TTL = 300  # 5 minutes in seconds
     
-    def __init__(self, repo_root: Optional[Path] = None):
+    def __init__(self, repo_root: Optional[Path] = None, enable_cache: bool = True):
         """
         Initialize storage.
         
         Args:
             repo_root: Repository root path. If None, auto-detect.
+            enable_cache: Enable caching for performance. Default True.
         """
         if repo_root is None:
             vcs = ensure_in_repository()
@@ -40,6 +44,13 @@ class TicketStorage:
         
         # Load configuration
         self._config = None
+        
+        # Caching system
+        self._enable_cache = enable_cache
+        self._ticket_cache: Dict[str, Tuple[Ticket, float]] = {}  # ticket_id -> (ticket, timestamp)
+        self._index_cache: Optional[Tuple[Dict, float]] = None  # (index, timestamp)
+        self._cache_lock = RLock()
+        self._cache_stats = {'hits': 0, 'misses': 0, 'evictions': 0}
     
     @property
     def config(self) -> TicketConfig:
@@ -88,6 +99,101 @@ class TicketStorage:
                 f"Tickets not initialized. Run 'tickets init' first."
             )
     
+    # Cache management methods
+    
+    def _is_cache_valid(self, timestamp: float) -> bool:
+        """Check if cached item is still valid based on TTL."""
+        return (time.time() - timestamp) < self.CACHE_TTL
+    
+    def _get_cached_ticket(self, ticket_id: str) -> Optional[Ticket]:
+        """Get ticket from cache if valid."""
+        if not self._enable_cache:
+            return None
+        
+        with self._cache_lock:
+            if ticket_id in self._ticket_cache:
+                ticket, timestamp = self._ticket_cache[ticket_id]
+                if self._is_cache_valid(timestamp):
+                    self._cache_stats['hits'] += 1
+                    return ticket
+                else:
+                    # Expired, remove from cache
+                    del self._ticket_cache[ticket_id]
+                    self._cache_stats['evictions'] += 1
+        
+        self._cache_stats['misses'] += 1
+        return None
+    
+    def _cache_ticket(self, ticket: Ticket) -> None:
+        """Add ticket to cache."""
+        if not self._enable_cache:
+            return
+        
+        with self._cache_lock:
+            self._ticket_cache[ticket.id] = (ticket, time.time())
+    
+    def _invalidate_ticket_cache(self, ticket_id: str) -> None:
+        """Remove ticket from cache."""
+        if not self._enable_cache:
+            return
+        
+        with self._cache_lock:
+            if ticket_id in self._ticket_cache:
+                del self._ticket_cache[ticket_id]
+    
+    def _get_cached_index(self) -> Optional[Dict]:
+        """Get index from cache if valid."""
+        if not self._enable_cache:
+            return None
+        
+        with self._cache_lock:
+            if self._index_cache is not None:
+                index, timestamp = self._index_cache
+                if self._is_cache_valid(timestamp):
+                    return index
+                else:
+                    self._index_cache = None
+        
+        return None
+    
+    def _cache_index(self, index: Dict) -> None:
+        """Add index to cache."""
+        if not self._enable_cache:
+            return
+        
+        with self._cache_lock:
+            self._index_cache = (index, time.time())
+    
+    def _invalidate_index_cache(self) -> None:
+        """Remove index from cache."""
+        if not self._enable_cache:
+            return
+        
+        with self._cache_lock:
+            self._index_cache = None
+    
+    def clear_cache(self) -> None:
+        """Clear all caches."""
+        with self._cache_lock:
+            self._ticket_cache.clear()
+            self._index_cache = None
+            self._cache_stats = {'hits': 0, 'misses': 0, 'evictions': 0}
+    
+    def get_cache_stats(self) -> Dict:
+        """Get cache performance statistics."""
+        with self._cache_lock:
+            stats = self._cache_stats.copy()
+            stats['cache_size'] = len(self._ticket_cache)
+            stats['enabled'] = self._enable_cache
+            
+            total_requests = stats['hits'] + stats['misses']
+            if total_requests > 0:
+                stats['hit_rate'] = stats['hits'] / total_requests
+            else:
+                stats['hit_rate'] = 0.0
+            
+            return stats
+    
     def _get_ticket_path(self, ticket_id: str, status: str = None) -> Path:
         """Get the file path for a ticket."""
         if status is None:
@@ -127,8 +233,15 @@ class TicketStorage:
         if old_path != new_path and old_path.exists():
             old_path.unlink()
         
+        # Invalidate caches since data changed
+        self._invalidate_ticket_cache(ticket.id)
+        self._invalidate_index_cache()
+        
         # Update index
         self._update_index_for_ticket(ticket)
+        
+        # Cache the ticket after save
+        self._cache_ticket(ticket)
     
     def load_ticket(self, ticket_id: str) -> Optional[Ticket]:
         """
@@ -142,6 +255,12 @@ class TicketStorage:
         """
         self._ensure_initialized()
         
+        # Try cache first
+        cached_ticket = self._get_cached_ticket(ticket_id)
+        if cached_ticket is not None:
+            return cached_ticket
+        
+        # Cache miss, load from file
         ticket_path = self._get_ticket_path(ticket_id)
         if not ticket_path.exists():
             return None
@@ -149,7 +268,12 @@ class TicketStorage:
         try:
             with open(ticket_path, 'r', encoding='utf-8') as f:
                 data = yaml.safe_load(f)
-            return Ticket.from_dict(data)
+            ticket = Ticket.from_dict(data)
+            
+            # Cache the loaded ticket
+            self._cache_ticket(ticket)
+            
+            return ticket
         except (yaml.YAMLError, TypeError, ValueError) as e:
             raise ValueError(f"Failed to load ticket {ticket_id}: {e}")
     
@@ -170,6 +294,10 @@ class TicketStorage:
             return False
         
         ticket_path.unlink()
+        
+        # Invalidate caches
+        self._invalidate_ticket_cache(ticket_id)
+        self._invalidate_index_cache()
         
         # Update index
         index = self._load_index()
@@ -287,12 +415,23 @@ class TicketStorage:
     
     def _load_index(self) -> Dict[str, Dict]:
         """Load the ticket index."""
+        # Try cache first
+        cached_index = self._get_cached_index()
+        if cached_index is not None:
+            return cached_index
+        
+        # Cache miss, load from file
         if not self.index_path.exists():
             return {}
         
         try:
             with open(self.index_path, 'r', encoding='utf-8') as f:
-                return yaml.safe_load(f) or {}
+                index = yaml.safe_load(f) or {}
+            
+            # Cache the loaded index
+            self._cache_index(index)
+            
+            return index
         except (yaml.YAMLError, FileNotFoundError):
             return {}
     
@@ -300,6 +439,9 @@ class TicketStorage:
         """Save the ticket index."""
         with open(self.index_path, 'w', encoding='utf-8') as f:
             yaml.dump(index, f, default_flow_style=False, sort_keys=True)
+        
+        # Cache the index after save
+        self._cache_index(index)
     
     def _update_index_for_ticket(self, ticket: Ticket) -> None:
         """Update index entry for a ticket."""

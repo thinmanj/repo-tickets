@@ -1242,6 +1242,61 @@ def _generate_status_report(data, all_tickets, days):
         click.echo(f"{Fore.RED}Error generating status report: {e}{Style.RESET_ALL}", err=True)
 
 
+@main.command(name='cache-stats')
+@click.option('--clear', is_flag=True, help='Clear the cache after showing stats')
+@click.option('--format', 'output_format', default='summary', 
+              type=click.Choice(['summary', 'json']), help='Output format')
+def cache_stats(clear, output_format):
+    """Show cache performance statistics."""
+    try:
+        storage = get_storage()
+        if not storage.is_initialized():
+            click.echo(f"{Fore.RED}❌ Tickets not initialized. Run 'tickets init' first.{Style.RESET_ALL}", err=True)
+            sys.exit(1)
+        
+        stats = storage.get_cache_stats()
+        
+        if output_format == 'json':
+            click.echo(json.dumps(stats, indent=2))
+        else:
+            click.echo(f"{Fore.CYAN}📊 Cache Performance Statistics{Style.RESET_ALL}\n")
+            
+            if not stats['enabled']:
+                click.echo(f"{Fore.YELLOW}⚠️  Caching is disabled{Style.RESET_ALL}")
+                return
+            
+            click.echo(f"Status: {Fore.GREEN}Enabled{Style.RESET_ALL}")
+            click.echo(f"Cache Size: {stats['cache_size']} tickets")
+            click.echo(f"\nPerformance:")
+            click.echo(f"  Hits: {stats['hits']}")
+            click.echo(f"  Misses: {stats['misses']}")
+            click.echo(f"  Evictions: {stats['evictions']}")
+            
+            hit_rate_pct = stats['hit_rate'] * 100
+            if hit_rate_pct >= 80:
+                color = Fore.GREEN
+                icon = "🟢"
+            elif hit_rate_pct >= 50:
+                color = Fore.YELLOW
+                icon = "🟡"
+            else:
+                color = Fore.RED
+                icon = "🔴"
+            
+            click.echo(f"\nHit Rate: {color}{icon} {hit_rate_pct:.1f}%{Style.RESET_ALL}")
+            
+            if hit_rate_pct < 50:
+                click.echo(f"\n{Fore.YELLOW}💡 Tip: Low hit rate may indicate infrequent repeated queries.{Style.RESET_ALL}")
+        
+        if clear:
+            storage.clear_cache()
+            click.echo(f"\n{Fore.GREEN}✓ Cache cleared{Style.RESET_ALL}")
+        
+    except Exception as e:
+        click.echo(f"{Fore.RED}Error getting cache stats: {e}{Style.RESET_ALL}", err=True)
+        sys.exit(1)
+
+
 @main.command()
 def tui():
     """Launch the interactive Terminal User Interface (TUI)."""
