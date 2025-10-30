@@ -1349,6 +1349,120 @@ def list_summary(status, priority, labels, output_format):
         sys.exit(1)
 
 
+@main.group()
+def events():
+    """🎯 Manage event bus and view event history."""
+    pass
+
+
+@events.command(name='history')
+@click.option('--type', '-t', help='Filter by event type (e.g., ticket.created)')
+@click.option('--limit', '-n', default=20, type=int, help='Number of events to show')
+@click.option('--format', 'output_format', default='table',
+              type=click.Choice(['table', 'json']), help='Output format')
+def event_history(type, limit, output_format):
+    """View event history."""
+    from .events import get_event_bus, EventType
+    
+    event_bus = get_event_bus()
+    
+    # Parse event type if provided
+    event_type = None
+    if type:
+        try:
+            event_type = EventType(type)
+        except ValueError:
+            click.echo(f"{Fore.RED}Invalid event type: {type}{Style.RESET_ALL}", err=True)
+            click.echo(f"\nAvailable types:")
+            for et in EventType:
+                click.echo(f"  {et.value}")
+            sys.exit(1)
+    
+    events = event_bus.get_history(event_type=event_type, limit=limit)
+    
+    if output_format == 'json':
+        events_data = [e.to_dict() for e in events]
+        click.echo(json.dumps(events_data, indent=2, default=str))
+        return
+    
+    if not events:
+        click.echo(f"{Fore.YELLOW}No events in history.{Style.RESET_ALL}")
+        return
+    
+    click.echo(f"{Fore.CYAN}📋 Event History ({len(events)} events){Style.RESET_ALL}\n")
+    
+    for event in events:
+        # Color code by event category
+        event_str = event.type.value
+        if event_str.startswith('ticket.'):
+            color = Fore.BLUE
+        elif event_str.startswith('agent.'):
+            color = Fore.GREEN
+        elif event_str.startswith('system.'):
+            color = Fore.YELLOW
+        else:
+            color = Fore.WHITE
+        
+        click.echo(f"{color}[{event.timestamp.strftime('%H:%M:%S')}] {event.type.value}{Style.RESET_ALL}")
+        click.echo(f"  ID: {event.id}")
+        click.echo(f"  Source: {event.source}")
+        
+        # Show key data fields
+        if 'ticket_id' in event.data:
+            click.echo(f"  Ticket: {event.data['ticket_id']}")
+        if 'title' in event.data:
+            title = event.data['title'][:50] + "..." if len(event.data['title']) > 50 else event.data['title']
+            click.echo(f"  Title: {title}")
+        if 'status' in event.data:
+            click.echo(f"  Status: {event.data['status']}")
+        if 'priority' in event.data:
+            click.echo(f"  Priority: {event.data['priority']}")
+        
+        click.echo("")
+
+
+@events.command(name='stats')
+@click.option('--format', 'output_format', default='summary',
+              type=click.Choice(['summary', 'json']), help='Output format')
+def event_stats(output_format):
+    """Show event bus statistics."""
+    from .events import get_event_bus
+    
+    event_bus = get_event_bus()
+    stats = event_bus.get_stats()
+    
+    if output_format == 'json':
+        click.echo(json.dumps(stats, indent=2))
+        return
+    
+    click.echo(f"{Fore.CYAN}📊 Event Bus Statistics{Style.RESET_ALL}\n")
+    
+    click.echo(f"Total Events Published: {stats['total_events']}")
+    click.echo(f"Active Subscribers: {stats['total_subscribers']}")
+    click.echo(f"Handler Errors: {stats['handler_errors']}")
+    click.echo(f"History Size: {stats['history_size']}")
+    click.echo(f"History Enabled: {'Yes' if stats['history_enabled'] else 'No'}")
+    
+    if stats['events_by_type']:
+        click.echo(f"\n{Fore.YELLOW}Events by Type:{Style.RESET_ALL}")
+        sorted_types = sorted(stats['events_by_type'].items(), key=lambda x: x[1], reverse=True)
+        for event_type, count in sorted_types[:10]:  # Top 10
+            click.echo(f"  {event_type}: {count}")
+        if len(sorted_types) > 10:
+            click.echo(f"  ... and {len(sorted_types) - 10} more types")
+
+
+@events.command(name='clear')
+def clear_events():
+    """Clear event history."""
+    from .events import get_event_bus
+    
+    event_bus = get_event_bus()
+    count = event_bus.clear_history()
+    
+    click.echo(f"{Fore.GREEN}✓ Cleared {count} event(s) from history{Style.RESET_ALL}")
+
+
 @main.command(name='rebuild-index')
 def rebuild_index():
     """Rebuild the ticket index from scratch."""

@@ -15,6 +15,7 @@ import yaml
 
 from .models import Ticket, TicketConfig, Epic, BacklogItem, generate_ticket_id
 from .vcs import ensure_in_repository
+from .events import EventType, publish_event
 
 
 class TicketStorage:
@@ -242,6 +243,15 @@ class TicketStorage:
         
         # Cache the ticket after save
         self._cache_ticket(ticket)
+        
+        # Publish event
+        event_type = EventType.TICKET_UPDATED if old_path.exists() else EventType.TICKET_CREATED
+        publish_event(event_type, {
+            'ticket_id': ticket.id,
+            'title': ticket.title,
+            'status': ticket.status,
+            'priority': ticket.priority,
+        }, source='storage')
     
     def load_ticket(self, ticket_id: str) -> Optional[Ticket]:
         """
@@ -303,6 +313,11 @@ class TicketStorage:
         index = self._load_index()
         index.pop(ticket_id, None)
         self._save_index(index)
+        
+        # Publish event
+        publish_event(EventType.TICKET_DELETED, {
+            'ticket_id': ticket_id,
+        }, source='storage')
         
         return True
     
@@ -613,6 +628,12 @@ class TicketStorage:
                     print(f"Warning: Failed to index {ticket_file}: {e}")
         
         self._save_index(index)
+        
+        # Publish event
+        publish_event(EventType.INDEX_REBUILT, {
+            'ticket_count': ticket_count,
+        }, source='storage')
+        
         return ticket_count
     
     # Epic Management Methods
