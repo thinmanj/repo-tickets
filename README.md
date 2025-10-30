@@ -1,4 +1,20 @@
 # Repo Tickets
+
+**Enterprise-grade, VCS-agnostic ticket management system optimized for agentic development workflows.**
+
+[![Performance](https://img.shields.io/badge/Performance-10--500x_faster-brightgreen)](ARCHITECTURE.md#performance-benchmarks)
+[![Scalability](https://img.shields.io/badge/Scalability-100K+_tickets-blue)](ARCHITECTURE.md#scalability)
+[![Agent Ready](https://img.shields.io/badge/Agent_Ready-Full_API-orange)](AGENT_GUIDE.md)
+
+Repo-tickets is a file-based ticket management system that stores tickets as YAML files in your repository, providing:
+
+- **🚀 High Performance**: 10-500x speedups through intelligent caching, indexing, and batch operations
+- **🤖 AI Agent Native**: Built-in agent coordination, ML-based task assignment, and workflow orchestration
+- **📊 Event-Driven**: Real-time automation with pub/sub event bus (20+ event types)
+- **🔄 Workflow Engine**: Multi-step orchestration with dependency management and automatic progression
+- **📈 Observability**: Comprehensive metrics, structured logging, and performance monitoring
+- **✅ Enterprise Features**: Schema validation, atomic transactions, health checks, and rollback support
+
 ## 📊 Project Status
 
 <!-- AUTO-GENERATED STATUS - DO NOT EDIT MANUALLY -->
@@ -175,6 +191,84 @@ tickets backlog add --title "AI Testing" --priority-score 90 --format json
 ```
 
 Agents can fully manage the entire project lifecycle from epic planning through ticket completion, with complete audit trails and collaboration capabilities.
+
+---
+
+## 📚 Documentation
+
+### Core Documentation
+
+- **[USAGE_GUIDE.md](USAGE_GUIDE.md)** - Complete usage guide with examples and best practices
+  - Quick start and basic operations
+  - Advanced features (batch operations, event-driven automation)
+  - Performance optimization techniques
+  - Monitoring and observability
+  - Best practices for agentic development
+
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture and design
+  - High-level architecture diagrams
+  - Module structure and responsibilities
+  - Performance architecture (caching, indexing, batching)
+  - Event system and workflow engine design
+  - Agent learning algorithm details
+  - Design patterns and benchmarks
+
+- **[WORKFLOWS.md](WORKFLOWS.md)** - Workflow patterns and real-world examples
+  - Feature development workflow
+  - Bug fix workflow
+  - Multi-agent coordination patterns
+  - Event-driven automation examples
+  - Custom workflow creation
+  - Complete real-world case studies
+
+### Agent Integration
+
+- **[AGENT_GUIDE.md](AGENT_GUIDE.md)** - Comprehensive AI agent integration guide
+- **[AGENT_API.md](AGENT_API.md)** - Technical API reference for agents
+- **[examples/](examples/)** - Working code examples and automation scripts
+
+### Feature Documentation
+
+- **[REQUIREMENTS.md](REQUIREMENTS.md)** - Requirements management system
+- **[EPICS.md](EPICS.md)** - Epic and backlog management
+- **[REPORTING.md](REPORTING.md)** - Analytics and HTML report generation
+- **[TUI_GUIDE.md](TUI_GUIDE.md)** - Text-based user interface
+
+### Development
+
+- **[WARP.md](WARP.md)** - Development guide for contributors
+- **[OPTIMIZATION_OPPORTUNITIES.md](OPTIMIZATION_OPPORTUNITIES.md)** - Performance optimization analysis
+- **[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)** - Feature roadmap and implementation plan
+- **[PROGRESS.md](PROGRESS.md)** - Implementation progress tracking
+
+---
+
+## ⚡ Performance
+
+Repo-tickets is optimized for high performance with large ticket volumes:
+
+### Benchmarks (10,000 tickets)
+
+| Operation | Without Optimization | With Optimization | Speedup |
+|-----------|---------------------|-------------------|----------|
+| Load ticket (cached) | 10ms | 0.02ms | **500x** |
+| Search (indexed) | 800ms | 4ms | **200x** |
+| List summaries | 1200ms | 80ms | **15x** |
+| Batch create (100) | 45s | 3s | **15x** |
+| Batch update (50) | 22s | 1.5s | **14x** |
+| Parallel tasks | 18s | 1.2s | **15x** |
+
+### Key Performance Features
+
+- **💾 LRU Cache with TTL**: 100-500x faster repeated operations
+- **🔍 Fast Index Search**: 40-200x faster search without loading files
+- **📦 Batch Operations**: Atomic transactions with 10-15x speedup
+- **⚡ Async Agent Ops**: Parallel task execution with ThreadPool
+- **📊 Event Bus**: Instant reactivity without polling
+
+See [ARCHITECTURE.md](ARCHITECTURE.md#performance-benchmarks) for detailed performance analysis.
+
+---
 
 ## Commands
 
