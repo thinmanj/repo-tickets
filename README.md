@@ -2,6 +2,9 @@
 
 **Enterprise-grade, VCS-agnostic ticket management system optimized for agentic development workflows.**
 
+[![PyPI version](https://badge.fury.io/py/repo-tickets.svg)](https://pypi.org/project/repo-tickets/)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Performance](https://img.shields.io/badge/Performance-10--500x_faster-brightgreen)](ARCHITECTURE.md#performance-benchmarks)
 [![Scalability](https://img.shields.io/badge/Scalability-100K+_tickets-blue)](ARCHITECTURE.md#scalability)
 [![Agent Ready](https://img.shields.io/badge/Agent_Ready-Full_API-orange)](AGENT_GUIDE.md)
@@ -60,9 +63,24 @@ A CLI ticket system that works with git, mercurial, and Jujutsu repositories wit
 
 ## Installation
 
+### From PyPI (Recommended)
+
 ```bash
+pip install repo-tickets
+```
+
+### From Source
+
+```bash
+git clone https://github.com/thinmanj/repo-tickets.git
+cd repo-tickets
 pip install -e .
 ```
+
+### Requirements
+
+- Python 3.8 or higher
+- git, mercurial, or Jujutsu (for VCS integration)
 
 ## Quick Start
 
