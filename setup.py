@@ -13,7 +13,7 @@ except FileNotFoundError:
 
 setup(
     name="repo-tickets",
-    version="1.0.0",
+    version="1.0.1",
     author="Julio Ona",
     author_email="thinmanj@gmail.com",
     description="Enterprise-grade, VCS-agnostic ticket management system optimized for agentic development workflows",

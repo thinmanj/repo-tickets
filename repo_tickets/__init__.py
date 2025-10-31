@@ -6,9 +6,9 @@ A self-contained ticketing system that works with git, mercurial,
 and Jujutsu repositories without external dependencies.
 """
 
-__version__ = "0.1.0"
-__author__ = "Your Name"
-__email__ = "your.email@example.com"
+__version__ = "1.0.0"
+__author__ = "Julio Ona"
+__email__ = "thinmanj@gmail.com"
 
 from .models import Ticket, Comment, TicketConfig
 from .storage import TicketStorage
