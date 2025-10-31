@@ -25,6 +25,7 @@ from .models import (
 from .storage import TicketStorage
 from .vcs import ensure_in_repository, detect_vcs, VCSError
 from .reports import TicketReportGenerator, open_in_browser
+from . import __version__
 
 
 # Initialize colorama for cross-platform colored output
@@ -304,7 +305,7 @@ def format_ticket_full(ticket: Ticket) -> str:
 
 
 @click.group()
-@click.version_option(version="0.1.0")
+@click.version_option(version=__version__)
 def main():
     """Repo Tickets - A CLI ticket system for git/hg/jj repositories."""
     pass

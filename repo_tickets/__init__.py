@@ -6,7 +6,7 @@ A self-contained ticketing system that works with git, mercurial,
 and Jujutsu repositories without external dependencies.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.2"
 __author__ = "Julio Ona"
 __email__ = "thinmanj@gmail.com"
 
