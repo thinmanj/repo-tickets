@@ -1,0 +1,109 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "repo-tickets"
+version = "1.0.0"
+authors = [
+    {name = "Julio Ona", email = "thinmanj@gmail.com"}
+]
+description = "Enterprise-grade, VCS-agnostic ticket management system optimized for agentic development workflows"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+keywords = [
+    "tickets",
+    "issue-tracker",
+    "project-management",
+    "git",
+    "mercurial",
+    "jujutsu",
+    "vcs",
+    "cli",
+    "workflow",
+    "agents",
+    "ai",
+    "automation",
+    "devops",
+    "agile",
+    "epic",
+    "backlog",
+    "requirements",
+    "bdd",
+    "gherkin"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "Topic :: Software Development :: Bug Tracking",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Version Control",
+    "Topic :: Software Development :: Version Control :: Git",
+    "Topic :: Software Development :: Version Control :: Mercurial",
+    "Topic :: System :: Systems Administration",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Environment :: Console",
+    "Typing :: Typed"
+]
+
+dependencies = [
+    "click>=8.0.0",
+    "pyyaml>=6.0",
+    "colorama>=0.4.4",
+    "tabulate>=0.9.0",
+    "python-dateutil>=2.8.0",
+    "rich>=13.0.0",
+    "textual>=0.44.0",
+    "pydantic>=2.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "flake8>=5.0.0",
+    "mypy>=1.0.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/thinmanj/repo-tickets"
+Documentation = "https://github.com/thinmanj/repo-tickets#readme"
+Repository = "https://github.com/thinmanj/repo-tickets"
+Issues = "https://github.com/thinmanj/repo-tickets/issues"
+Changelog = "https://github.com/thinmanj/repo-tickets/releases"
+
+[project.scripts]
+tickets = "repo_tickets.cli:main"
+
+[tool.setuptools]
+packages = ["repo_tickets"]
+
+[tool.setuptools.package-data]
+repo_tickets = ["py.typed"]
+
+[tool.black]
+line-length = 100
+target-version = ["py38", "py39", "py310", "py311", "py312"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
